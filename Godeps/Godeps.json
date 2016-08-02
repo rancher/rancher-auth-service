@@ -1,0 +1,135 @@
+{
+	"ImportPath": "github.com/rancher/rancher-auth-service",
+	"GoVersion": "go1.6",
+	"Deps": [
+		{
+			"ImportPath": "github.com/Sirupsen/logrus",
+			"Comment": "v0.8.7",
+			"Rev": "418b41d23a1bf978c06faea5313ba194650ac088"
+		},
+		{
+			"ImportPath": "github.com/codegangsta/cli",
+			"Comment": "1.2.0-66-g6086d79",
+			"Rev": "6086d7927ec35315964d9fea46df6c04e6d697c1"
+		},
+		{
+			"ImportPath": "github.com/docker/distribution/registry/api/errcode",
+			"Comment": "v2.0.0-467-g9038e48",
+			"Rev": "9038e48c3b982f8e82281ea486f078a73731ac4e"
+		},
+		{
+			"ImportPath": "github.com/docker/docker/errors",
+			"Comment": "v1.4.1-9970-gb3bacb4",
+			"Rev": "b3bacb42afeb66f7de594ef5b0433a23697f6753"
+		},
+		{
+			"ImportPath": "github.com/docker/docker/pkg/broadcaster",
+			"Comment": "v1.4.1-9970-gb3bacb4",
+			"Rev": "b3bacb42afeb66f7de594ef5b0433a23697f6753"
+		},
+		{
+			"ImportPath": "github.com/docker/docker/pkg/ioutils",
+			"Comment": "v1.4.1-9970-gb3bacb4",
+			"Rev": "b3bacb42afeb66f7de594ef5b0433a23697f6753"
+		},
+		{
+			"ImportPath": "github.com/docker/docker/pkg/system",
+			"Comment": "v1.4.1-9970-gb3bacb4",
+			"Rev": "b3bacb42afeb66f7de594ef5b0433a23697f6753"
+		},
+		{
+			"ImportPath": "github.com/docker/docker/runconfig",
+			"Comment": "v1.4.1-9970-gb3bacb4",
+			"Rev": "b3bacb42afeb66f7de594ef5b0433a23697f6753"
+		},
+		{
+			"ImportPath": "github.com/docker/docker/volume",
+			"Comment": "v1.4.1-9970-gb3bacb4",
+			"Rev": "b3bacb42afeb66f7de594ef5b0433a23697f6753"
+		},
+		{
+			"ImportPath": "github.com/docker/engine-api/types/blkiodev",
+			"Comment": "v0.2.2-54-g9a940e4",
+			"Rev": "9a940e4ead265e18d4feb9e3c515428966a08278"
+		},
+		{
+			"ImportPath": "github.com/docker/engine-api/types/container",
+			"Comment": "v0.2.2-54-g9a940e4",
+			"Rev": "9a940e4ead265e18d4feb9e3c515428966a08278"
+		},
+		{
+			"ImportPath": "github.com/docker/engine-api/types/network",
+			"Comment": "v0.2.2-54-g9a940e4",
+			"Rev": "9a940e4ead265e18d4feb9e3c515428966a08278"
+		},
+		{
+			"ImportPath": "github.com/docker/engine-api/types/strslice",
+			"Comment": "v0.2.2-54-g9a940e4",
+			"Rev": "9a940e4ead265e18d4feb9e3c515428966a08278"
+		},
+		{
+			"ImportPath": "github.com/docker/go-connections/nat",
+			"Comment": "v0.1.3-2-g3ef1e92",
+			"Rev": "3ef1e92d1b93e587895dfa466e1682ae63448801"
+		},
+		{
+			"ImportPath": "github.com/docker/go-units",
+			"Comment": "v0.1.0-23-g5d2041e",
+			"Rev": "5d2041e26a699eaca682e2ea41c8f891e1060444"
+		},
+		{
+			"ImportPath": "github.com/docker/libcompose/cli/app",
+			"Rev": "aad672800904307e96a2c21cad1420f3080e0f35"
+		},
+		{
+			"ImportPath": "github.com/docker/libcompose/cli/command",
+			"Rev": "aad672800904307e96a2c21cad1420f3080e0f35"
+		},
+		{
+			"ImportPath": "github.com/docker/libcompose/logger",
+			"Rev": "aad672800904307e96a2c21cad1420f3080e0f35"
+		},
+		{
+			"ImportPath": "github.com/docker/libcompose/project",
+			"Rev": "aad672800904307e96a2c21cad1420f3080e0f35"
+		},
+		{
+			"ImportPath": "github.com/docker/libcompose/utils",
+			"Rev": "aad672800904307e96a2c21cad1420f3080e0f35"
+		},
+		{
+			"ImportPath": "github.com/flynn/go-shlex",
+			"Rev": "3f9db97f856818214da2e1057f8ad84803971cff"
+		},
+		{
+			"ImportPath": "github.com/gorilla/context",
+			"Rev": "1c83b3eabd45b6d76072b66b746c20815fb2872d"
+		},
+		{
+			"ImportPath": "github.com/gorilla/mux",
+			"Rev": "ad4d7a5882b961e07e2626045eb995c022ac6664"
+		},
+		{
+			"ImportPath": "github.com/gorilla/websocket",
+			"Rev": "5ed2f4547d7b9c036541b27a67ecf54e41756997"
+		},
+		{
+			"ImportPath": "github.com/rancher/go-rancher/api",
+			"Comment": "v0.1.0-174-gfbbfa7d",
+			"Rev": "fbbfa7d2899bb3542fd6e52c82e10bdd0d3516c5"
+		},
+		{
+			"ImportPath": "github.com/rancher/go-rancher/client",
+			"Comment": "v0.1.0-174-gfbbfa7d",
+			"Rev": "fbbfa7d2899bb3542fd6e52c82e10bdd0d3516c5"
+		},
+		{
+			"ImportPath": "golang.org/x/net/context",
+			"Rev": "633434aadc5ed438f45bc0efbb52c3a1ad7e64b9"
+		},
+		{
+			"ImportPath": "gopkg.in/yaml.v2",
+			"Rev": "49c95bdc21843256fb6c4e0d370a05f24a0bf213"
+		}
+	]
+}
