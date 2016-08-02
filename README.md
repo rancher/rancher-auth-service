@@ -36,8 +36,8 @@ Usage of ./rancher-auth-service:
   -publicKeyFile string
     	Path of file containing RSA Public key
 
-# The config file for github should be a json file providing the github client_id and client_secret. Example:
+The config file for github should be a json file providing the github client_id and client_secret. Example:
 
 {"client_id": "", "client_secret": ""}
 
-# The RSA public and private keys are needed to sign the JWT token provided by /token API
+The RSA public and private keys are needed to sign the JWT token provided by /token API
