@@ -6,40 +6,42 @@ import (
 	"strconv"
 )
 
-type GithubAccount struct {
-	Id        int    `json:"id,omitempty"`
+//Account defines properties an account on github has
+type Account struct {
+	ID        int    `json:"id,omitempty"`
 	Login     string `json:"login,omitempty"`
 	Name      string `json:"name,omitempty"`
-	AvatarUrl string `json:"avatar_url,omitempty"`
-	HtmlUrl   string `json:"html_url,omitempty"`
+	AvatarURL string `json:"avatar_url,omitempty"`
+	HTMLURL   string `json:"html_url,omitempty"`
 }
 
-func (a *GithubAccount) toIdentity(externalIdType string, identity *client.Identity) {
-	identity.ExternalId = strconv.Itoa(a.Id)
-	identity.Resource.Id = externalIdType + ":" + strconv.Itoa(a.Id)
-	identity.ExternalIdType = externalIdType
+func (a *Account) toIdentity(externalIDType string, identity *client.Identity) {
+	identity.ExternalId = strconv.Itoa(a.ID)
+	identity.Resource.Id = externalIDType + ":" + strconv.Itoa(a.ID)
+	identity.ExternalIdType = externalIDType
 	if a.Name != "" {
 		identity.Name = a.Name
 	} else {
 		identity.Name = a.Login
 	}
 	identity.Login = a.Login
-	identity.ProfilePicture = a.AvatarUrl
-	identity.ProfileUrl = a.HtmlUrl
+	identity.ProfilePicture = a.AvatarURL
+	identity.ProfileUrl = a.HTMLURL
 }
 
-type GithubTeam struct {
-	Id           int                    `json:"id,omitempty"`
+//Team defines properties a team on github has
+type Team struct {
+	ID           int                    `json:"id,omitempty"`
 	Organization map[string]interface{} `json:"organization,omitempty"`
 	Name         string                 `json:"name,omitempty"`
 	Slug         string                 `json:"slug,omitempty"`
 }
 
-func (t *GithubTeam) toGithubAccount(url string, account *GithubAccount) {
-	account.Id = t.Id
+func (t *Team) toGithubAccount(url string, account *Account) {
+	account.ID = t.ID
 	account.Name = t.Name
 	orgLogin := (t.Organization["login"]).(string)
-	account.AvatarUrl = t.Organization["avatar_url"].(string)
-	account.HtmlUrl = fmt.Sprintf(url, orgLogin, t.Slug)
+	account.AvatarURL = t.Organization["avatar_url"].(string)
+	account.HTMLURL = fmt.Sprintf(url, orgLogin, t.Slug)
 	account.Login = t.Slug
 }

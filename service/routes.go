@@ -34,15 +34,27 @@ func NewRouter() *mux.Router {
 	// Schema
 	schemas.AddType("schema", client.Schema{})
 
-	// Error
-	err := schemas.AddType("error", model.AuthServiceError{})
-	err.CollectionMethods = []string{}
-
 	// Identity
 	identity := schemas.AddType("identity", client.Identity{})
 	identity.CollectionMethods = []string{"GET"}
 	identity.ResourceMethods = []string{"GET"}
 	identity.PluralName = "identities"
+
+	// GithubConfig
+	githubconfig := schemas.AddType("githubconfig", model.GithubConfig{})
+	githubconfig.CollectionMethods = []string{}
+
+	// AuthConfig
+	authconfig := schemas.AddType("config", model.AuthConfig{})
+	authconfig.CollectionMethods = []string{"GET"}
+	authconfig.ResourceMethods = []string{"GET", "POST"}
+	authconfig.PluralName = "configs"
+
+
+
+	// Error
+	err := schemas.AddType("error", model.AuthServiceError{})
+	err.CollectionMethods = []string{}
 
 	// API framework routes
 	router := mux.NewRouter().StrictSlash(true)
@@ -53,10 +65,13 @@ func NewRouter() *mux.Router {
 	router.Methods("GET").Path("/v1-rancher-auth").Handler(api.VersionHandler(schemas, "v1-rancher-auth"))
 
 	// Application routes
-	router.Methods("POST").Path("/v1-rancher-auth/token").Handler(api.ApiHandler(schemas, http.HandlerFunc(GetToken)))
+	router.Methods("POST").Path("/v1-rancher-auth/config").Handler(api.ApiHandler(schemas, http.HandlerFunc(UpdateConfig)))
+	router.Methods("GET").Path("/v1-rancher-auth/config").Handler(api.ApiHandler(schemas, http.HandlerFunc(GetConfig)))
+	router.Methods("POST").Path("/v1-rancher-auth/reload").Handler(api.ApiHandler(schemas, http.HandlerFunc(Reload)))
+	router.Methods("POST").Path("/v1-rancher-auth/token").Handler(api.ApiHandler(schemas, http.HandlerFunc(CreateToken)))
 	router.Methods("GET").Path("/v1-rancher-auth/me/identities").Handler(api.ApiHandler(schemas, http.HandlerFunc(GetIdentities)))
 	router.Methods("GET").Path("/v1-rancher-auth/identities").Handler(api.ApiHandler(schemas, http.HandlerFunc(SearchIdentities)))
-	//router.Methods("POST").Path("/v1-rancher-auth/reload").Handler(api.ApiHandler(schemas, authenticate(GetDNSRecords)))
+
 
 	return router
 }
@@ -65,8 +80,8 @@ func NewRouter() *mux.Router {
 func ReturnHTTPError(w http.ResponseWriter, r *http.Request, httpStatus int, errorMessage string) {
 	w.WriteHeader(httpStatus)
 
-	err := model.AuthServiceError{
-		Resource: client.Resource{
+	err := model.AuthServiceError {
+		Resource: client.Resource {
 			Type: "error",
 		},
 		Status:  strconv.Itoa(httpStatus),

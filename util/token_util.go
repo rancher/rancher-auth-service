@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 )
 
+//CreateTokenWithPayload returns signed jwt token 
 func CreateTokenWithPayload(payload map[string]interface{}, privateKey *rsa.PrivateKey) (string, error) {
 	token := jwt.New(jwt.GetSigningMethod("RS256"))
 	token.Claims = payload
@@ -18,6 +19,7 @@ func CreateTokenWithPayload(payload map[string]interface{}, privateKey *rsa.Priv
 	return signed, nil
 }
 
+//ParsePrivateKey Parses privateKey file
 func ParsePrivateKey(filePath string) *rsa.PrivateKey {
 	keyBytes, err := ioutil.ReadFile(filePath)
 	if err != nil {
@@ -33,6 +35,7 @@ func ParsePrivateKey(filePath string) *rsa.PrivateKey {
 	return privateKey
 }
 
+//ParsePublicKey Parses publicKey file
 func ParsePublicKey(filePath string) *rsa.PublicKey {
 	keyBytes, err := ioutil.ReadFile(filePath)
 	if err != nil {

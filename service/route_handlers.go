@@ -7,13 +7,14 @@ import (
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
 	"github.com/rancher/rancher-auth-service/server"
+	"github.com/rancher/rancher-auth-service/model"
 	"io/ioutil"
 	"net/http"
 	"strings"
 )
 
-//GetToken is a handler for route /token and returns the jwt token after authenticating the user
-func GetToken(w http.ResponseWriter, r *http.Request) {
+//CreateToken is a handler for route /token and returns the jwt token after authenticating the user
+func CreateToken(w http.ResponseWriter, r *http.Request) {
 	bytes, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		log.Errorf("GetToken failed with error: %v", err)
@@ -34,7 +35,7 @@ func GetToken(w http.ResponseWriter, r *http.Request) {
 
 	if securityCode != "" {
 		//getToken
-		token, err := server.GetToken(securityCode)
+		token, err := server.CreateToken(securityCode)
 		if err != nil {
 			log.Errorf("GetToken failed with error: %v", err)
 			ReturnHTTPError(w, r, http.StatusInternalServerError, fmt.Sprintf("Error getting the token: %v", err))
@@ -103,13 +104,13 @@ func SearchIdentities(w http.ResponseWriter, r *http.Request) {
 
 		//see which filters are passed, if none then error 400
 
-		externalId := r.URL.Query().Get("externalId")
-		externalIdType := r.URL.Query().Get("externalIdType")
+		externalID := r.URL.Query().Get("externalId")
+		externalIDType := r.URL.Query().Get("externalIdType")
 		name := r.URL.Query().Get("name")
 
-		if externalId != "" && externalIdType != "" {
+		if externalID != "" && externalIDType != "" {
 			//search by id and type
-			identity, err := server.GetIdentity(externalId, externalIdType, accessToken)
+			identity, err := server.GetIdentity(externalID, externalIDType, accessToken)
 			if err == nil {
 				apiContext.Write(&identity)
 			} else {
@@ -139,3 +140,73 @@ func SearchIdentities(w http.ResponseWriter, r *http.Request) {
 		ReturnHTTPError(w, r, http.StatusUnauthorized, "Unauthorized, please provide a valid token")
 	}
 }
+
+
+//UpdateConfig is a handler for POST /authconfig, loads the provider with the config and saves the config back to Cattle database
+func UpdateConfig(w http.ResponseWriter, r *http.Request) {
+	bytes, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		log.Errorf("UpdateConfig failed with error: %v", err)
+		ReturnHTTPError(w, r, http.StatusBadRequest, "Bad Request, Please check the request content")
+	}
+	var authConfig model.AuthConfig
+
+	err = json.Unmarshal(bytes, &authConfig)
+	if err != nil {
+		log.Errorf("UpdateConfig unmarshal failed with error: %v", err)
+		ReturnHTTPError(w, r, http.StatusBadRequest, "Bad Request, Please check the request content")
+	}
+	log.Infof("authConfig %v", authConfig)
+	
+	if authConfig.Provider == "" {
+		log.Errorf("UpdateConfig: Provider is a required field")
+		ReturnHTTPError(w, r, http.StatusBadRequest, "Bad Request, Please check the request content, Provider is a required field")
+	}
+	
+	
+	err = server.UpdateConfig(authConfig)
+	if err != nil {
+		log.Errorf("UpdateConfig failed with error: %v", err)
+		ReturnHTTPError(w, r, http.StatusBadRequest, "Bad Request, Please check the request content")
+	}
+}
+
+//GetConfig is a handler for GET /authconfig, lists the provider config
+func GetConfig(w http.ResponseWriter, r *http.Request) {
+	//apiContext := api.GetApiContext(r)
+	authHeader := r.Header.Get("Authorization")
+	var accessToken string
+	// header value format will be "Bearer <token>"
+	if authHeader != "" {
+		if !strings.HasPrefix(authHeader, "Bearer ") {
+			log.Debug("GetMyIdentities Failed to find Bearer token %v", authHeader)
+			ReturnHTTPError(w, r, http.StatusUnauthorized, "Unauthorized, please provide a valid token")
+		}
+		accessToken = strings.TrimPrefix(authHeader, "Bearer ")
+	}
+	log.Debugf("token is this  %s", accessToken)
+	
+	config, err := server.GetConfig(accessToken)
+	log.Debugf("config  %v", config)
+	if err == nil {
+		//apiContext.Write(&config)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(config)
+	} else {
+		//failed to get the config
+		log.Debug("GetConfig failed with error %v", err)
+		ReturnHTTPError(w, r, http.StatusInternalServerError, "Failed to get the auth config")
+	}			
+}
+
+//Reload is a handler for POST /reloadconfig, reloads the config from Cattle database and initializes the provider 
+func Reload(w http.ResponseWriter, r *http.Request) {
+	err := server.Reload()
+	if err != nil {
+		//failed to reload the config from DB
+		log.Debug("Reload failed with error %v", err)
+		ReturnHTTPError(w, r, http.StatusInternalServerError, "Failed to reload the auth config")
+	}			
+}
+
+

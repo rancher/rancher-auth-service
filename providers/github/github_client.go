@@ -11,27 +11,30 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	
+	"github.com/rancher/rancher-auth-service/model"
 )
 
 const (
-	GHE_API                 = "/api/v3"
-	GITHUB_ACCESS_TOKEN     = Name + "access_token"
-	GITHUB_API              = "https://api.github.com"
-	GITHUB_DEFAULT_HOSTNAME = "https://github.com"
+	gheAPI                 = "/api/v3"
+	githubAccessToken     = Name + "access_token"
+	githubAPI              = "https://api.github.com"
+	githubDefaultHostName = "https://github.com"
 )
 
-type GithubClient struct {
+//GClient implements a httpclient for github
+type GClient struct {
 	httpClient *http.Client
-	config     *GithubConfig
+	config     *model.GithubConfig
 }
 
-func (g *GithubClient) getAccessToken(code string) (string, error) {
+func (g *GClient) getAccessToken(code string) (string, error) {
 	form := url.Values{}
 	form.Add("client_id", g.config.ClientID)
 	form.Add("client_secret", g.config.ClientSecret)
 	form.Add("code", code)
 
-	url := g.getUrl("TOKEN")
+	url := g.getURL("TOKEN")
 
 	resp, err := g.postToGithub(url, form)
 	if err != nil {
@@ -66,35 +69,35 @@ func (g *GithubClient) getAccessToken(code string) (string, error) {
 	return acessToken, nil
 }
 
-func (g *GithubClient) getGithubUser(githubAccessToken string) (GithubAccount, error) {
+func (g *GClient) getGithubUser(githubAccessToken string) (Account, error) {
 
-	url := g.getUrl("USER_INFO")
+	url := g.getURL("USER_INFO")
 	log.Debugf("url %v", url)
 	resp, err := g.getFromGithub(githubAccessToken, url)
 	if err != nil {
 		log.Errorf("Github getGithubUser: received error from github, err: %v", err)
-		return GithubAccount{}, err
+		return Account{}, err
 	}
 	defer resp.Body.Close()
-	var githubAcct GithubAccount
+	var githubAcct Account
 
 	b, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		log.Errorf("Github getGithubUser: error reading response, err: %v", err)
-		return GithubAccount{}, err
+		return Account{}, err
 	}
 
 	if err := json.Unmarshal(b, &githubAcct); err != nil {
 		log.Errorf("Github getGithubUser: error unmarshalling response, err: %v", err)
-		return GithubAccount{}, err
+		return Account{}, err
 	}
 
 	return githubAcct, nil
 }
 
-func (g *GithubClient) getGithubOrgs(githubAccessToken string) ([]GithubAccount, error) {
-	var orgs []GithubAccount
-	url := g.getUrl("ORG_INFO")
+func (g *GClient) getGithubOrgs(githubAccessToken string) ([]Account, error) {
+	var orgs []Account
+	url := g.getURL("ORG_INFO")
 	responses, err := g.paginateGithub(githubAccessToken, url)
 	if err != nil {
 		log.Errorf("Github getGithubOrgs: received error from github, err: %v", err)
@@ -103,7 +106,7 @@ func (g *GithubClient) getGithubOrgs(githubAccessToken string) ([]GithubAccount,
 
 	for _, response := range responses {
 		defer response.Body.Close()
-		var orgObjs []GithubAccount
+		var orgObjs []Account
 		b, err := ioutil.ReadAll(response.Body)
 		if err != nil {
 			log.Errorf("Github getGithubOrgs: error reading the response from github, err: %v", err)
@@ -112,20 +115,18 @@ func (g *GithubClient) getGithubOrgs(githubAccessToken string) ([]GithubAccount,
 		if err := json.Unmarshal(b, &orgObjs); err != nil {
 			log.Errorf("Github getGithubOrgs: received error unmarshalling org array, err: %v", err)
 			return orgs, err
-		} else {
-			for _, orgObj := range orgObjs {
-				orgs = append(orgs, orgObj)
-			}
+		} 
+		for _, orgObj := range orgObjs {
+			orgs = append(orgs, orgObj)
 		}
-
 	}
 
 	return orgs, nil
 }
 
-func (g *GithubClient) getGithubTeams(githubAccessToken string) ([]GithubAccount, error) {
-	var teams []GithubAccount
-	url := g.getUrl("TEAMS")
+func (g *GClient) getGithubTeams(githubAccessToken string) ([]Account, error) {
+	var teams []Account
+	url := g.getURL("TEAMS")
 	responses, err := g.paginateGithub(githubAccessToken, url)
 	if err != nil {
 		log.Errorf("Github getGithubTeams: received error from github, err: %v", err)
@@ -138,63 +139,62 @@ func (g *GithubClient) getGithubTeams(githubAccessToken string) ([]GithubAccount
 		if err != nil {
 			log.Errorf("Github getGithubTeams: received error unmarshalling teams array, err: %v", err)
 			return teams, err
-		} else {
-
-			for _, teamObj := range teamObjs {
-				teams = append(teams, teamObj)
-			}
+		} 
+		for _, teamObj := range teamObjs {
+			teams = append(teams, teamObj)
 		}
+
 	}
 	return teams, nil
 }
 
-func (g *GithubClient) getTeamInfo(response *http.Response) ([]GithubAccount, error) {
-	var teams []GithubAccount
+func (g *GClient) getTeamInfo(response *http.Response) ([]Account, error) {
+	var teams []Account
 	b, err := ioutil.ReadAll(response.Body)
 	if err != nil {
 		log.Errorf("Github getTeamInfo: error reading the response from github, err: %v", err)
 		return teams, err
 	}
-	var teamObjs []GithubTeam
+	var teamObjs []Team
 	if err := json.Unmarshal(b, &teamObjs); err != nil {
 		log.Errorf("Github getTeamInfo: received error unmarshalling team array, err: %v", err)
 		return teams, err
-	} else {
-		url := g.getUrl("TEAM_PROFILE")
-		for _, team := range teamObjs {
-			teamAcct := GithubAccount{}
-			team.toGithubAccount(url, &teamAcct)
-			teams = append(teams, teamAcct)
-		}
+	} 
+	url := g.getURL("TEAM_PROFILE")
+	for _, team := range teamObjs {
+		teamAcct := Account{}
+		team.toGithubAccount(url, &teamAcct)
+		teams = append(teams, teamAcct)
 	}
+	
 	return teams, nil
 }
 
-func (g *GithubClient) getTeamById(githubAccessToken string, id string) (GithubAccount, error) {
-	var teamAcct GithubAccount
-	url := g.getUrl("TEAM") + id
+func (g *GClient) getTeamByID(githubAccessToken string, id string) (Account, error) {
+	var teamAcct Account
+	url := g.getURL("TEAM") + id
 	response, err := g.getFromGithub(githubAccessToken, url)
 	if err != nil {
-		log.Errorf("Github getTeamById: received error from github, err: %v", err)
+		log.Errorf("Github getTeamByID: received error from github, err: %v", err)
 		return teamAcct, err
 	}
 	b, err := ioutil.ReadAll(response.Body)
 	if err != nil {
-		log.Errorf("Github getTeamById: error reading the response from github, err: %v", err)
+		log.Errorf("Github getTeamByID: error reading the response from github, err: %v", err)
 		return teamAcct, err
 	}
-	var teamObj GithubTeam
+	var teamObj Team
 	if err := json.Unmarshal(b, &teamObj); err != nil {
-		log.Errorf("Github getTeamInfo: received error unmarshalling team array, err: %v", err)
+		log.Errorf("Github getTeamByID: received error unmarshalling team array, err: %v", err)
 		return teamAcct, err
-	} else {
-		url := g.getUrl("TEAM_PROFILE")
-		teamObj.toGithubAccount(url, &teamAcct)
 	}
+	url = g.getURL("TEAM_PROFILE")
+	teamObj.toGithubAccount(url, &teamAcct)
+
 	return teamAcct, nil
 }
 
-func (g *GithubClient) paginateGithub(githubAccessToken string, url string) ([]*http.Response, error) {
+func (g *GClient) paginateGithub(githubAccessToken string, url string) ([]*http.Response, error) {
 	var responses []*http.Response
 
 	response, err := g.getFromGithub(githubAccessToken, url)
@@ -202,20 +202,20 @@ func (g *GithubClient) paginateGithub(githubAccessToken string, url string) ([]*
 		return responses, err
 	}
 	responses = append(responses, response)
-	nextUrl := g.nextGithubPage(response)
-	for nextUrl != "" {
-		response, err = g.getFromGithub(githubAccessToken, nextUrl)
+	nextURL := g.nextGithubPage(response)
+	for nextURL != "" {
+		response, err = g.getFromGithub(githubAccessToken, nextURL)
 		if err != nil {
 			return responses, err
 		}
 		responses = append(responses, response)
-		nextUrl = g.nextGithubPage(response)
+		nextURL = g.nextGithubPage(response)
 	}
 
 	return responses, nil
 }
 
-func (g *GithubClient) nextGithubPage(response *http.Response) string {
+func (g *GClient) nextGithubPage(response *http.Response) string {
 	header := response.Header.Get("link")
 
 	if header != "" {
@@ -230,89 +230,89 @@ func (g *GithubClient) nextGithubPage(response *http.Response) string {
 	return ""
 }
 
-func (g *GithubClient) getGithubUserByName(username string, githubAccessToken string) (GithubAccount, error) {
+func (g *GClient) getGithubUserByName(username string, githubAccessToken string) (Account, error) {
 
 	_, err := g.getGithubOrgByName(username, githubAccessToken)
 	if err == nil {
-		return GithubAccount{}, fmt.Errorf("There is a org by this name, not looking fo the user entity by name %v", username)
+		return Account{}, fmt.Errorf("There is a org by this name, not looking fo the user entity by name %v", username)
 	}
 
 	username = URLEncoded(username)
-	url := g.getUrl("USERS") + username
+	url := g.getURL("USERS") + username
 
 	log.Debugf("url %v", url)
 	resp, err := g.getFromGithub(githubAccessToken, url)
 	if err != nil {
 		log.Errorf("Github getGithubUserByName: received error from github, err: %v", err)
-		return GithubAccount{}, err
+		return Account{}, err
 	}
 	defer resp.Body.Close()
-	var githubAcct GithubAccount
+	var githubAcct Account
 
 	b, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		log.Errorf("Github getGithubUserByName: error reading response, err: %v", err)
-		return GithubAccount{}, err
+		return Account{}, err
 	}
 
 	if err := json.Unmarshal(b, &githubAcct); err != nil {
 		log.Errorf("Github getGithubUserByName: error unmarshalling response, err: %v", err)
-		return GithubAccount{}, err
+		return Account{}, err
 	}
 
 	return githubAcct, nil
 }
 
-func (g *GithubClient) getGithubOrgByName(org string, githubAccessToken string) (GithubAccount, error) {
+func (g *GClient) getGithubOrgByName(org string, githubAccessToken string) (Account, error) {
 
 	org = URLEncoded(org)
-	url := g.getUrl("ORGS") + org
+	url := g.getURL("ORGS") + org
 
 	log.Debugf("url %v", url)
 	resp, err := g.getFromGithub(githubAccessToken, url)
 	if err != nil {
 		log.Errorf("Github getGithubOrgByName: received error from github, err: %v", err)
-		return GithubAccount{}, err
+		return Account{}, err
 	}
 	defer resp.Body.Close()
-	var githubAcct GithubAccount
+	var githubAcct Account
 
 	b, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		log.Errorf("Github getGithubOrgByName: error reading response, err: %v", err)
-		return GithubAccount{}, err
+		return Account{}, err
 	}
 
 	if err := json.Unmarshal(b, &githubAcct); err != nil {
 		log.Errorf("Github getGithubOrgByName: error unmarshalling response, err: %v", err)
-		return GithubAccount{}, err
+		return Account{}, err
 	}
 
 	return githubAcct, nil
 }
 
-func (g *GithubClient) getUserOrgById(id string, githubAccessToken string) (GithubAccount, error) {
+func (g *GClient) getUserOrgByID(id string, githubAccessToken string) (Account, error) {
 
-	url := g.getUrl("USER_INFO") + "/" + id
+	url := g.getURL("USER_INFO") + "/" + id
 
 	log.Debugf("url %v", url)
 	resp, err := g.getFromGithub(githubAccessToken, url)
 	if err != nil {
 		log.Errorf("Github getUserOrgById: received error from github, err: %v", err)
-		return GithubAccount{}, err
+		return Account{}, err
 	}
 	defer resp.Body.Close()
-	var githubAcct GithubAccount
+	var githubAcct Account
 
 	b, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		log.Errorf("Github getUserOrgById: error reading response, err: %v", err)
-		return GithubAccount{}, err
+		return Account{}, err
 	}
 
 	if err := json.Unmarshal(b, &githubAcct); err != nil {
 		log.Errorf("Github getUserOrgById: error unmarshalling response, err: %v", err)
-		return GithubAccount{}, err
+		return Account{}, err
 	}
 
 	return githubAcct, nil
@@ -350,7 +350,7 @@ func URLEncoded(str string) string {
 	return u.String()
 }
 
-func (g *GithubClient) postToGithub(url string, form url.Values) (*http.Response, error) {
+func (g *GClient) postToGithub(url string, form url.Values) (*http.Response, error) {
 	req, err := http.NewRequest("POST", url, strings.NewReader(form.Encode()))
 	if err != nil {
 		log.Error(err)
@@ -376,7 +376,7 @@ func (g *GithubClient) postToGithub(url string, form url.Values) (*http.Response
 	return resp, nil
 }
 
-func (g *GithubClient) getFromGithub(githubAccessToken string, url string) (*http.Response, error) {
+func (g *GClient) getFromGithub(githubAccessToken string, url string) (*http.Response, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		log.Error(err)
@@ -402,16 +402,16 @@ func (g *GithubClient) getFromGithub(githubAccessToken string, url string) (*htt
 	return resp, nil
 }
 
-func (g *GithubClient) getUrl(endpoint string) string {
+func (g *GClient) getURL(endpoint string) string {
 
 	var hostName, apiEndpoint, toReturn string
 
 	if g.config.Hostname != "" {
 		hostName = g.config.Scheme + g.config.Hostname
-		apiEndpoint = g.config.Scheme + g.config.Hostname + GHE_API
+		apiEndpoint = g.config.Scheme + g.config.Hostname + gheAPI
 	} else {
-		hostName = GITHUB_DEFAULT_HOSTNAME
-		apiEndpoint = GITHUB_API
+		hostName = githubDefaultHostName
+		apiEndpoint = githubAPI
 	}
 
 	switch endpoint {

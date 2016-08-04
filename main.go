@@ -9,10 +9,11 @@ import (
 
 func main() {
 	server.SetEnv()
-	StartService()
+	startService()
 }
 
-func StartService() {
+
+func startService() {
 
 	log.Info("Starting Rancher Auth service")
 
