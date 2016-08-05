@@ -45,5 +45,5 @@ The RSA public and private keys are needed to sign the JWT token provided by /to
 # Required Environment Variables:
 
 Set the Cattle service account and secret key to the Environment
-export CATTLE_ACCESS_KEY= <service account key>
-export CATTLE_SECRET_KEY= <service account secret key>
+\n export CATTLE_ACCESS_KEY= <service account key>
+\n export CATTLE_SECRET_KEY= <service account secret key>
