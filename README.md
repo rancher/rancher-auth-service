@@ -42,6 +42,7 @@ Usage of ./rancher-auth-service:
 
 The RSA public and private keys are needed to sign the JWT token provided by /token API
 
-# Also following needs to be set as the Environment Variables:
+# Required Environment Variables:
+
 export CATTLE_ACCESS_KEY= <service account key>
 export CATTLE_SECRET_KEY= <service account secret key>
