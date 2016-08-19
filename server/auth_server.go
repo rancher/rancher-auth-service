@@ -4,35 +4,36 @@ import (
 	"crypto/rsa"
 	"flag"
 	"fmt"
+	log "github.com/Sirupsen/logrus"
 	"os"
 	"strconv"
 	"strings"
-	log "github.com/Sirupsen/logrus"
 
 	"github.com/rancher/go-rancher/client"
 	"github.com/rancher/rancher-auth-service/model"
 	"github.com/rancher/rancher-auth-service/providers"
-	"github.com/rancher/rancher-auth-service/util"
+	//"github.com/rancher/rancher-auth-service/util"
 )
 
 const (
-	accessModeSetting = "api.auth.github.access.mode"
-	allowedIdentitiesSetting = "api.auth.github.allowed.identities"
-	providerSetting = "api.auth.provider.configured"
-	providerNameSetting = "api.auth.provider.name.configured"
-	securitySetting = "api.security.enabled"
+	accessModeSetting        = "api.auth.access.mode"
+	allowedIdentitiesSetting = "api.auth.allowed.identities"
+	userTypeSetting          = "api.auth.user.type"
+	providerSetting          = "api.auth.provider.configured"
+	providerNameSetting      = "api.auth.provider.name.configured"
+	securitySetting          = "api.security.enabled"
 )
 
 var (
-	provider       providers.IdentityProvider
-	privateKey     *rsa.PrivateKey
-	publicKey      *rsa.PublicKey
-	authConfigInMemory 	   model.AuthConfig
-	rancherClient  *client.RancherClient
-	debug          = flag.Bool("debug", false, "Debug")
-	logFile        = flag.String("log", "", "Log file")
-	publicKeyFile  = flag.String("publicKeyFile", "", "Path of file containing RSA Public key")
-	privateKeyFile = flag.String("privateKeyFile", "", "Path of file containing RSA Private key")
+	provider           providers.IdentityProvider
+	privateKey         *rsa.PrivateKey
+	publicKey          *rsa.PublicKey
+	authConfigInMemory model.AuthConfig
+	rancherClient      *client.RancherClient
+	debug              = flag.Bool("debug", false, "Debug")
+	logFile            = flag.String("log", "", "Log file")
+	publicKeyFile      = flag.String("publicKeyFile", "", "Path of file containing RSA Public key")
+	privateKeyFile     = flag.String("privateKeyFile", "", "Path of file containing RSA Private key")
 )
 
 //SetEnv sets the parameters necessary
@@ -48,7 +49,7 @@ func SetEnv() {
 		log.SetLevel(log.DebugLevel)
 	}
 
-	if *publicKeyFile == "" {
+	/*if *publicKeyFile == "" {
 		log.Fatal("Please provide the RSA public key, halting")
 		return
 	}
@@ -58,7 +59,7 @@ func SetEnv() {
 		log.Fatal("Please provide the RSA private key, halting")
 		return
 	}
-	privateKey = util.ParsePrivateKey(*privateKeyFile)
+	privateKey = util.ParsePrivateKey(*privateKeyFile)*/
 
 	cattleURL := os.Getenv("CATTLE_URL")
 	if len(cattleURL) == 0 {
@@ -86,6 +87,11 @@ func SetEnv() {
 	if err != nil {
 		log.Errorf("Failed to connect to rancher cattle client: %v", err)
 	}
+
+	err = Reload()
+	if err != nil {
+		log.Fatalf("Failed to reload the auth config from db on start: %v", err)
+	}
 }
 
 func newCattleClient(cattleURL string, cattleAccessKey string, cattleSecretKey string) (*client.RancherClient, error) {
@@ -108,7 +114,6 @@ func testCattleConnect() error {
 	return err
 }
 
-
 func initProviderWithConfig(authConfig model.AuthConfig) (providers.IdentityProvider, error) {
 	newProvider := providers.GetProvider(authConfig.Provider)
 	if newProvider == nil {
@@ -124,7 +129,7 @@ func initProviderWithConfig(authConfig model.AuthConfig) (providers.IdentityProv
 
 func readSettings(settings []string) (map[string]string, error) {
 	var dbSettings = make(map[string]string)
-	
+
 	for _, key := range settings {
 		setting, err := rancherClient.Setting.ById(key)
 		if err != nil {
@@ -133,18 +138,19 @@ func readSettings(settings []string) (map[string]string, error) {
 		}
 		dbSettings[key] = setting.ActiveValue
 	}
-	
+
 	return dbSettings, nil
 }
 
 func updateSettings(settings map[string]string) error {
 	for key, value := range settings {
 		if value != "" {
+			log.Debugf("Update setting key:%v value: %v", key, value)
 			setting, err := rancherClient.Setting.ById(key)
 			if err != nil {
 				log.Errorf("Error getting the setting %v , error: %v", key, err)
 				return err
-			}	
+			}
 			setting, err = rancherClient.Setting.Update(setting, &client.Setting{
 				Value: value,
 			})
@@ -171,14 +177,12 @@ func getAllowedIDString(allowedIdentities []client.Identity) string {
 func getAllowedIdentities(idString string, accessToken string) []client.Identity {
 	var identities []client.Identity
 	if idString != "" {
-		log.Debugf("idString %v", idString)
 		externalIDList := strings.Split(idString, ",")
-	
 		for _, id := range externalIDList {
 			var identity client.Identity
 			var err error
 			parts := strings.SplitN(id, ":", 2)
-			
+
 			if len(parts) < 2 {
 				log.Debugf("Malformed Id, skipping this allowed identity %v", id)
 				continue
@@ -192,7 +196,7 @@ func getAllowedIdentities(idString string, accessToken string) []client.Identity
 					continue
 				}
 			}
-	
+
 			identity = client.Identity{Resource: client.Resource{
 				Type: "identity",
 			}}
@@ -202,13 +206,12 @@ func getAllowedIdentities(idString string, accessToken string) []client.Identity
 			identities = append(identities, identity)
 		}
 	}
-	
+
 	return identities
 }
 
 //UpdateConfig updates the config in DB
 func UpdateConfig(authConfig model.AuthConfig) error {
-
 	newProvider, err := initProviderWithConfig(authConfig)
 	if err != nil {
 		log.Errorf("UpdateConfig: Cannot update the config, error initializing the provider %v", err)
@@ -219,21 +222,20 @@ func UpdateConfig(authConfig model.AuthConfig) error {
 
 	//add the generic settings
 	providerSettings[accessModeSetting] = authConfig.AccessMode
+	providerSettings[userTypeSetting] = newProvider.GetUserType()
 	providerSettings[allowedIdentitiesSetting] = getAllowedIDString(authConfig.AllowedIdentities)
 	providerSettings[securitySetting] = strconv.FormatBool(authConfig.Enabled)
 	providerSettings[providerNameSetting] = authConfig.Provider
-	if authConfig.Enabled {
-		providerSettings[providerSetting] = authConfig.Provider
-	}
+	providerSettings[providerSetting] = authConfig.Provider
 	err = updateSettings(providerSettings)
 	if err != nil {
 		log.Errorf("Error Storing the provider settings %v", err)
 		return err
 	}
-	//switch the in-memory provider 
+	//switch the in-memory provider
 	provider = newProvider
 	authConfigInMemory = authConfig
-	
+
 	return nil
 }
 
@@ -243,8 +245,8 @@ func GetConfig(accessToken string) (model.AuthConfig, error) {
 	var settings []string
 
 	config = model.AuthConfig{Resource: client.Resource{
-			Type: "config",
-		}}
+		Type: "config",
+	}}
 
 	//add the generic settings
 	settings = append(settings, accessModeSetting)
@@ -252,38 +254,33 @@ func GetConfig(accessToken string) (model.AuthConfig, error) {
 	settings = append(settings, securitySetting)
 	settings = append(settings, providerSetting)
 	settings = append(settings, providerNameSetting)
-	
+
 	dbSettings, err := readSettings(settings)
-	
+
 	if err != nil {
 		log.Errorf("GetConfig: Error reading DB settings %v", err)
 		return config, err
 	}
-	
+
 	config.AccessMode = dbSettings[accessModeSetting]
 	config.AllowedIdentities = getAllowedIdentities(dbSettings[allowedIdentitiesSetting], accessToken)
 	enabled, err := strconv.ParseBool(dbSettings[securitySetting])
 	if err == nil {
 		config.Enabled = enabled
 	} else {
-		config.Enabled  = false
+		config.Enabled = false
 	}
-	
+
 	providerNameInDb := dbSettings[providerNameSetting]
-	
-	log.Debugf("Provider Name In Db %v", providerNameInDb)
-	
 	config.Provider = providerNameInDb
-	
 	//add the provider specific config
 	newProvider := providers.GetProvider(config.Provider)
 	if newProvider == nil {
 		return config, fmt.Errorf("Could not get the %s auth provider", config.Provider)
-	}	
-	providerSettings, err := readSettings(newProvider.GetProviderSettingList())	
+	}
+	providerSettings, err := readSettings(newProvider.GetProviderSettingList())
 	newProvider.AddProviderConfig(&config, providerSettings)
-	
-	
+
 	return config, nil
 }
 
@@ -291,55 +288,59 @@ func GetConfig(accessToken string) (model.AuthConfig, error) {
 func Reload() error {
 	//read config from db
 	authConfig, err := GetConfig("")
-	
+
 	newProvider, err := initProviderWithConfig(authConfig)
 	if err != nil {
 		log.Errorf("Error initializing the provider %v", err)
 		return err
 	}
 	provider = newProvider
-	authConfigInMemory = authConfig	
+	authConfigInMemory = authConfig
 	return nil
 }
 
 //CreateToken will authenticate with provider and create a jwt token
-func CreateToken(securityCode string) (string, error) {
+func CreateToken(securityCode string) (model.Token, error) {
 	if provider != nil {
 		token, err := provider.GenerateToken(securityCode)
 		if err != nil {
-			return "", err
+			return model.Token{}, err
 		}
-	
-		payload := make(map[string]interface{})
-		payload["token"] = token.Type
-		payload["account_id"] = token.ExternalAccountID
+
+		/*payload := make(map[string]interface{})
 		payload["access_token"] = token.AccessToken
-		payload["idList"] = identitiesToIDList(token.IdentityList)
-		payload["identities"] = token.IdentityList
-	
-		return util.CreateTokenWithPayload(payload, privateKey)
-	} 
-	return "", fmt.Errorf("No auth provider configured")
+
+		jwt, err  := util.CreateTokenWithPayload(payload, privateKey)
+		if err != nil {
+			return model.Token{}, err
+		}
+		token.JwtToken = jwt*/
+
+		return token, nil
+	}
+	return model.Token{}, fmt.Errorf("No auth provider configured")
 }
 
 //RefreshToken will refresh a jwt token
-func RefreshToken(accessToken string) (string, error) {
+func RefreshToken(accessToken string) (model.Token, error) {
 	if provider != nil {
 		token, err := provider.RefreshToken(accessToken)
 		if err != nil {
-			return "", err
+			return model.Token{}, err
 		}
-	
-		payload := make(map[string]interface{})
-		payload["token"] = token.Type
-		payload["account_id"] = token.ExternalAccountID
+
+		/*payload := make(map[string]interface{})
 		payload["access_token"] = token.AccessToken
-		payload["idList"] = identitiesToIDList(token.IdentityList)
-		payload["identities"] = token.IdentityList
-	
-		return util.CreateTokenWithPayload(payload, privateKey)
-	} 
-	return "", fmt.Errorf("No auth provider configured")
+
+		jwt, err  := util.CreateTokenWithPayload(payload, privateKey)
+		if err != nil {
+			return model.Token{}, err
+		}
+		token.JwtToken = jwt*/
+
+		return token, nil
+	}
+	return model.Token{}, fmt.Errorf("No auth provider configured")
 }
 
 func identitiesToIDList(identities []client.Identity) []string {

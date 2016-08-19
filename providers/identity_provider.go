@@ -9,6 +9,7 @@ import (
 //IdentityProvider interfacse defines what methods an identity provider should implement
 type IdentityProvider interface {
 	GetName() string
+	GetUserType() string
 	GenerateToken(securityCode string) (model.Token, error)
 	RefreshToken(accessToken string) (model.Token, error)
 	GetIdentities(accessToken string) ([]client.Identity, error)
@@ -23,12 +24,10 @@ type IdentityProvider interface {
 
 //GetProvider returns an instance of an identyityProvider by name
 func GetProvider(name string) IdentityProvider {
-	switch name{
-		case "githubconfig":
-			return github.InitializeProvider()
-		default: 
-			return nil	
+	switch name {
+	case "githubconfig":
+		return github.InitializeProvider()
+	default:
+		return nil
 	}
 }
-
-

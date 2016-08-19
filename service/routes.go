@@ -50,7 +50,9 @@ func NewRouter() *mux.Router {
 	authconfig.ResourceMethods = []string{"GET", "POST"}
 	authconfig.PluralName = "configs"
 
-
+	//Token
+	token := schemas.AddType("token", model.Token{})
+	token.CollectionMethods = []string{}
 
 	// Error
 	err := schemas.AddType("error", model.AuthServiceError{})
@@ -59,19 +61,18 @@ func NewRouter() *mux.Router {
 	// API framework routes
 	router := mux.NewRouter().StrictSlash(true)
 
-	router.Methods("GET").Path("/").Handler(api.VersionsHandler(schemas, "v1-rancher-auth"))
-	router.Methods("GET").Path("/v1-rancher-auth/schemas").Handler(api.SchemasHandler(schemas))
-	router.Methods("GET").Path("/v1-rancher-auth/schemas/{id}").Handler(api.SchemaHandler(schemas))
-	router.Methods("GET").Path("/v1-rancher-auth").Handler(api.VersionHandler(schemas, "v1-rancher-auth"))
+	router.Methods("GET").Path("/").Handler(api.VersionsHandler(schemas, "v1-auth"))
+	router.Methods("GET").Path("/v1-auth/schemas").Handler(api.SchemasHandler(schemas))
+	router.Methods("GET").Path("/v1-auth/schemas/{id}").Handler(api.SchemaHandler(schemas))
+	router.Methods("GET").Path("/v1-auth").Handler(api.VersionHandler(schemas, "v1-auth"))
 
 	// Application routes
-	router.Methods("POST").Path("/v1-rancher-auth/config").Handler(api.ApiHandler(schemas, http.HandlerFunc(UpdateConfig)))
-	router.Methods("GET").Path("/v1-rancher-auth/config").Handler(api.ApiHandler(schemas, http.HandlerFunc(GetConfig)))
-	router.Methods("POST").Path("/v1-rancher-auth/reload").Handler(api.ApiHandler(schemas, http.HandlerFunc(Reload)))
-	router.Methods("POST").Path("/v1-rancher-auth/token").Handler(api.ApiHandler(schemas, http.HandlerFunc(CreateToken)))
-	router.Methods("GET").Path("/v1-rancher-auth/me/identities").Handler(api.ApiHandler(schemas, http.HandlerFunc(GetIdentities)))
-	router.Methods("GET").Path("/v1-rancher-auth/identities").Handler(api.ApiHandler(schemas, http.HandlerFunc(SearchIdentities)))
-
+	router.Methods("POST").Path("/v1-auth/config").Handler(api.ApiHandler(schemas, http.HandlerFunc(UpdateConfig)))
+	router.Methods("GET").Path("/v1-auth/config").Handler(api.ApiHandler(schemas, http.HandlerFunc(GetConfig)))
+	router.Methods("POST").Path("/v1-auth/reload").Handler(api.ApiHandler(schemas, http.HandlerFunc(Reload)))
+	router.Methods("POST").Path("/v1-auth/token").Handler(api.ApiHandler(schemas, http.HandlerFunc(CreateToken)))
+	router.Methods("GET").Path("/v1-auth/me/identities").Handler(api.ApiHandler(schemas, http.HandlerFunc(GetIdentities)))
+	router.Methods("GET").Path("/v1-auth/identities").Handler(api.ApiHandler(schemas, http.HandlerFunc(SearchIdentities)))
 
 	return router
 }
@@ -80,8 +81,8 @@ func NewRouter() *mux.Router {
 func ReturnHTTPError(w http.ResponseWriter, r *http.Request, httpStatus int, errorMessage string) {
 	w.WriteHeader(httpStatus)
 
-	err := model.AuthServiceError {
-		Resource: client.Resource {
+	err := model.AuthServiceError{
+		Resource: client.Resource{
 			Type: "error",
 		},
 		Status:  strconv.Itoa(httpStatus),

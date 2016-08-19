@@ -10,15 +10,15 @@ import (
 
 //Constants for github
 const (
-	Name      = "github"
-	Config =    Name + "config";
-	TokenType = Name + "jwt"
-	UserType  = Name + "_user"
-	OrgType   = Name + "_org"
-	TeamType  = Name + "_team"
-	hostnameSetting = "api.github.domain"
-	schemeSetting = "api.github.scheme"
-	clientIDSetting = "api.auth.github.client.id"
+	Name                = "github"
+	Config              = Name + "config"
+	TokenType           = Name + "jwt"
+	UserType            = Name + "_user"
+	OrgType             = Name + "_org"
+	TeamType            = Name + "_team"
+	hostnameSetting     = "api.github.domain"
+	schemeSetting       = "api.github.scheme"
+	clientIDSetting     = "api.auth.github.client.id"
 	clientSecretSetting = "api.auth.github.client.secret"
 )
 
@@ -33,7 +33,7 @@ func InitializeProvider() *GProvider {
 
 	githubProvider := &GProvider{}
 	githubProvider.githubClient = githubClient
-	
+
 	return githubProvider
 }
 
@@ -45,6 +45,11 @@ type GProvider struct {
 //GetName returns the name of the provider
 func (g *GProvider) GetName() string {
 	return Name
+}
+
+//GetUserType returns the string used to identify a user account for this provider
+func (g *GProvider) GetUserType() string {
+	return UserType
 }
 
 //GenerateToken authenticates the given code and returns the token
@@ -61,7 +66,9 @@ func (g *GProvider) GenerateToken(securityCode string) (model.Token, error) {
 }
 
 func (g *GProvider) createToken(accessToken string) (model.Token, error) {
-	var token model.Token
+	var token = model.Token{Resource: client.Resource{
+		Type: "token",
+	}}
 	token.AccessToken = accessToken
 	//getIdentities from accessToken
 	identities, err := g.GetIdentities(accessToken)
@@ -201,17 +208,17 @@ func (g *GProvider) LoadConfig(authConfig model.AuthConfig) error {
 //GetConfig returns the provider config
 func (g *GProvider) GetConfig() model.AuthConfig {
 	log.Debug("In github getConfig")
-	
+
 	authConfig := model.AuthConfig{Resource: client.Resource{
-				Type: "config",
-			}}
-	
+		Type: "config",
+	}}
+
 	authConfig.Provider = Config
 	authConfig.GithubConfig = *g.githubClient.config
-	
+
 	authConfig.GithubConfig.Resource = client.Resource{
-				Type: "githubconfig",
-			}
+		Type: "githubconfig",
+	}
 
 	log.Debug("In github authConfig %v", authConfig)
 	return authConfig
@@ -220,7 +227,7 @@ func (g *GProvider) GetConfig() model.AuthConfig {
 //GetSettings transforms the provider config to db settings
 func (g *GProvider) GetSettings() map[string]string {
 	settings := make(map[string]string)
-	
+
 	settings[hostnameSetting] = g.githubClient.config.Hostname
 	settings[schemeSetting] = g.githubClient.config.Scheme
 	settings[clientIDSetting] = g.githubClient.config.ClientID
@@ -242,12 +249,12 @@ func (g *GProvider) GetProviderSettingList() []string {
 //AddProviderConfig adds the provider config into the generic config using the settings from db
 func (g *GProvider) AddProviderConfig(authConfig *model.AuthConfig, providerSettings map[string]string) {
 	githubConfig := model.GithubConfig{Resource: client.Resource{
-				Type: "githubconfig",
-			}}
+		Type: "githubconfig",
+	}}
 	githubConfig.Hostname = providerSettings[hostnameSetting]
 	githubConfig.Scheme = providerSettings[schemeSetting]
 	githubConfig.ClientID = providerSettings[clientIDSetting]
 	githubConfig.ClientSecret = providerSettings[clientSecretSetting]
-	
+
 	authConfig.GithubConfig = githubConfig
 }

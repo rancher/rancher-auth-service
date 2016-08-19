@@ -6,8 +6,10 @@ import (
 
 //Token structure defines all properties that can be present in a token
 type Token struct {
-	Type string 
-	ExternalAccountID   string
-	IdentityList []client.Identity
-	AccessToken string
+	client.Resource
+	Type              string            `json:"tokenType"`
+	ExternalAccountID string            `json:"accountID"`
+	IdentityList      []client.Identity `json:"identities"`
+	AccessToken       string            `json:"accessToken"`
+	JwtToken          string            `json:"jwt"`
 }
