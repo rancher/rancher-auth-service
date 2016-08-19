@@ -2,10 +2,9 @@ package server
 
 import (
 	"crypto/rsa"
-	"flag"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
-	"os"
+	"github.com/codegangsta/cli"
 	"strconv"
 	"strings"
 
@@ -25,53 +24,42 @@ const (
 )
 
 var (
-	provider           providers.IdentityProvider
-	privateKey         *rsa.PrivateKey
-	publicKey          *rsa.PublicKey
-	authConfigInMemory model.AuthConfig
-	rancherClient      *client.RancherClient
-	debug              = flag.Bool("debug", false, "Debug")
-	logFile            = flag.String("log", "", "Log file")
-	publicKeyFile      = flag.String("publicKeyFile", "", "Path of file containing RSA Public key")
-	privateKeyFile     = flag.String("privateKeyFile", "", "Path of file containing RSA Private key")
+	provider                      providers.IdentityProvider
+	privateKey                    *rsa.PrivateKey
+	publicKey                     *rsa.PublicKey
+	authConfigInMemory            model.AuthConfig
+	rancherClient                 *client.RancherClient
+	publicKeyFile, privateKeyFile string
 )
 
 //SetEnv sets the parameters necessary
-func SetEnv() {
-	flag.Parse()
+func SetEnv(c *cli.Context) {
 
-	textFormatter := &log.TextFormatter{
-		FullTimestamp: true,
-	}
-	log.SetFormatter(textFormatter)
-
-	if *debug {
-		log.SetLevel(log.DebugLevel)
-	}
-
-	/*if *publicKeyFile == "" {
+	/*publicKeyFile = c.GlobalString("rsa-public-key")
+	if publicKeyFile == "" {
 		log.Fatal("Please provide the RSA public key, halting")
 		return
 	}
-	publicKey = util.ParsePublicKey(*publicKeyFile)
+	publicKey = util.ParsePublicKey(publicKeyFile)
 
-	if *privateKeyFile == "" {
+	privateKeyFile = c.GlobalString("rsa-private-key")
+	if privateKeyFile == "" {
 		log.Fatal("Please provide the RSA private key, halting")
 		return
 	}
-	privateKey = util.ParsePrivateKey(*privateKeyFile)*/
+	privateKey = util.ParsePrivateKey(privateKeyFile)*/
 
-	cattleURL := os.Getenv("CATTLE_URL")
+	cattleURL := c.GlobalString("cattle-url")
 	if len(cattleURL) == 0 {
 		log.Fatalf("CATTLE_URL is not set")
 	}
 
-	cattleAPIKey := os.Getenv("CATTLE_ACCESS_KEY")
+	cattleAPIKey := c.GlobalString("cattle-access-key")
 	if len(cattleAPIKey) == 0 {
 		log.Fatalf("CATTLE_ACCESS_KEY is not set")
 	}
 
-	cattleSecretKey := os.Getenv("CATTLE_SECRET_KEY")
+	cattleSecretKey := c.GlobalString("cattle-secret-key")
 	if len(cattleSecretKey) == 0 {
 		log.Fatalf("CATTLE_SECRET_KEY is not set")
 	}
