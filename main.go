@@ -3,9 +3,9 @@ package main
 import (
 	"fmt"
 	log "github.com/Sirupsen/logrus"
-	"github.com/codegangsta/cli"
 	"github.com/rancher/rancher-auth-service/server"
 	"github.com/rancher/rancher-auth-service/service"
+	"github.com/urfave/cli"
 	"net/http"
 	"os"
 )

@@ -4,7 +4,7 @@ import (
 	"crypto/rsa"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
-	"github.com/codegangsta/cli"
+	"github.com/urfave/cli"
 	"strconv"
 	"strings"
 

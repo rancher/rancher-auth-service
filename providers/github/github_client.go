@@ -356,7 +356,7 @@ func (g *GClient) postToGithub(url string, form url.Values) (*http.Response, err
 	req.Header.Add("Accept", "application/json")
 	resp, err := g.httpClient.Do(req)
 	if err != nil {
-		log.Error("Received error from github: %v", err)
+		log.Errorf("Received error from github: %v", err)
 		return resp, err
 	}
 	// Check the status code
@@ -382,7 +382,7 @@ func (g *GClient) getFromGithub(githubAccessToken string, url string) (*http.Res
 	req.Header.Add("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36)")
 	resp, err := g.httpClient.Do(req)
 	if err != nil {
-		log.Error("Received error from github: %v", err)
+		log.Errorf("Received error from github: %v", err)
 		return resp, err
 	}
 	// Check the status code

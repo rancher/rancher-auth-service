@@ -7,10 +7,16 @@ import (
 	"io/ioutil"
 )
 
-//CreateTokenWithPayload returns signed jwt token 
+//CreateTokenWithPayload returns signed jwt token
 func CreateTokenWithPayload(payload map[string]interface{}, privateKey *rsa.PrivateKey) (string, error) {
 	token := jwt.New(jwt.GetSigningMethod("RS256"))
-	token.Claims = payload
+	claims := make(jwt.MapClaims)
+
+	for key, value := range payload {
+		claims[key] = value
+	}
+
+	token.Claims = claims
 	signed, err := token.SignedString(privateKey)
 	if err != nil {
 		log.Errorf("Failed to sign the token using the private key, error %v", err)
