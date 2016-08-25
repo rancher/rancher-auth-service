@@ -27,16 +27,30 @@ func main() {
 	app.Action = StartService
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
-			Name: "rsa-public-key",
+			Name: "rsa-public-key-file",
 			Usage: fmt.Sprintf(
 				"Specify the path to the file containing RSA public key",
 			),
 		},
 		cli.StringFlag{
-			Name: "rsa-private-key",
+			Name: "rsa-private-key-file",
 			Usage: fmt.Sprintf(
 				"Specify the path to the file containing RSA private key",
 			),
+		},
+		cli.StringFlag{
+			Name: "rsa-public-key-contents",
+			Usage: fmt.Sprintf(
+				"An alternative to  rsa-public-key-file. Specify the contents of the key.",
+			),
+			EnvVar: "RSA_PUBLIC_KEY_CONTENTS",
+		},
+		cli.StringFlag{
+			Name: "rsa-private-key-contents",
+			Usage: fmt.Sprintf(
+				"An alternative to rsa-private-key-file. Specify the contents of the key.",
+			),
+			EnvVar: "RSA_PRIVATE_KEY_CONTENTS",
 		},
 		cli.StringFlag{
 			Name: "cattle-url",

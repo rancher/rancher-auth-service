@@ -10,6 +10,6 @@ type Token struct {
 	Type              string            `json:"tokenType"`
 	ExternalAccountID string            `json:"accountID"`
 	IdentityList      []client.Identity `json:"identities"`
-	AccessToken       string            `json:"accessToken"`
-	JwtToken          string            `json:"jwt"`
+	AccessToken       string
+	JwtToken          string `json:"jwt"`
 }

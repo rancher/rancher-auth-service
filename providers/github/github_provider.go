@@ -231,8 +231,9 @@ func (g *GProvider) GetSettings() map[string]string {
 	settings[hostnameSetting] = g.githubClient.config.Hostname
 	settings[schemeSetting] = g.githubClient.config.Scheme
 	settings[clientIDSetting] = g.githubClient.config.ClientID
-	settings[clientSecretSetting] = g.githubClient.config.ClientSecret
-
+	if g.githubClient.config.ClientSecret != "" {
+		settings[clientSecretSetting] = g.githubClient.config.ClientSecret
+	}
 	return settings
 }
 

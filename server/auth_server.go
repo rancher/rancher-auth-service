@@ -11,7 +11,7 @@ import (
 	"github.com/rancher/go-rancher/client"
 	"github.com/rancher/rancher-auth-service/model"
 	"github.com/rancher/rancher-auth-service/providers"
-	//"github.com/rancher/rancher-auth-service/util"
+	"github.com/rancher/rancher-auth-service/util"
 )
 
 const (
@@ -20,34 +20,55 @@ const (
 	userTypeSetting          = "api.auth.user.type"
 	providerSetting          = "api.auth.provider.configured"
 	providerNameSetting      = "api.auth.provider.name.configured"
+	externalProviderSetting  = "api.auth.external.provider.configured"
 	securitySetting          = "api.security.enabled"
 )
 
 var (
-	provider                      providers.IdentityProvider
-	privateKey                    *rsa.PrivateKey
-	publicKey                     *rsa.PublicKey
-	authConfigInMemory            model.AuthConfig
-	rancherClient                 *client.RancherClient
-	publicKeyFile, privateKeyFile string
+	provider                                                                     providers.IdentityProvider
+	privateKey                                                                   *rsa.PrivateKey
+	publicKey                                                                    *rsa.PublicKey
+	authConfigInMemory                                                           model.AuthConfig
+	rancherClient                                                                *client.RancherClient
+	publicKeyFile, publicKeyFileContents, privateKeyFile, privateKeyFileContents string
 )
 
 //SetEnv sets the parameters necessary
 func SetEnv(c *cli.Context) {
 
-	/*publicKeyFile = c.GlobalString("rsa-public-key")
-	if publicKeyFile == "" {
-		log.Fatal("Please provide the RSA public key, halting")
-		return
-	}
-	publicKey = util.ParsePublicKey(publicKeyFile)
+	publicKeyFile = c.GlobalString("rsa-public-key-file")
+	publicKeyFileContents = c.GlobalString("rsa-public-key-contents")
 
-	privateKeyFile = c.GlobalString("rsa-private-key")
-	if privateKeyFile == "" {
-		log.Fatal("Please provide the RSA private key, halting")
+	if publicKeyFile != "" && publicKeyFileContents != "" {
+		log.Fatal("Can't specify both rsa-public-key-file and rsa-public-key-contents")
 		return
 	}
-	privateKey = util.ParsePrivateKey(privateKeyFile)*/
+
+	if publicKeyFile != "" {
+		publicKey = util.ParsePublicKey(publicKeyFile)
+	} else if publicKeyFileContents != "" {
+		publicKey = util.ParsePublicKeyContents(publicKeyFileContents)
+	} else {
+		log.Fatal("Please provide either rsa-public-key-file or rsa-public-key-contents, halting")
+		return
+	}
+
+	privateKeyFile = c.GlobalString("rsa-private-key-file")
+	privateKeyFileContents = c.GlobalString("rsa-private-key-contents")
+
+	if privateKeyFile != "" && privateKeyFileContents != "" {
+		log.Fatal("Can't specify both rsa-private-key-file and rsa-private-key-contents")
+		return
+	}
+
+	if privateKeyFile != "" {
+		privateKey = util.ParsePrivateKey(privateKeyFile)
+	} else if privateKeyFileContents != "" {
+		privateKey = util.ParsePrivateKeyContents(privateKeyFileContents)
+	} else {
+		log.Fatal("Please provide either rsa-private-key-file or rsa-private-key-contents, halting")
+		return
+	}
 
 	cattleURL := c.GlobalString("cattle-url")
 	if len(cattleURL) == 0 {
@@ -215,6 +236,7 @@ func UpdateConfig(authConfig model.AuthConfig) error {
 	providerSettings[securitySetting] = strconv.FormatBool(authConfig.Enabled)
 	providerSettings[providerNameSetting] = authConfig.Provider
 	providerSettings[providerSetting] = authConfig.Provider
+	providerSettings[externalProviderSetting] = "true"
 	err = updateSettings(providerSettings)
 	if err != nil {
 		log.Errorf("Error Storing the provider settings %v", err)
@@ -295,14 +317,14 @@ func CreateToken(securityCode string) (model.Token, error) {
 			return model.Token{}, err
 		}
 
-		/*payload := make(map[string]interface{})
+		payload := make(map[string]interface{})
 		payload["access_token"] = token.AccessToken
 
-		jwt, err  := util.CreateTokenWithPayload(payload, privateKey)
+		jwt, err := util.CreateTokenWithPayload(payload, privateKey)
 		if err != nil {
 			return model.Token{}, err
 		}
-		token.JwtToken = jwt*/
+		token.JwtToken = jwt
 
 		return token, nil
 	}
@@ -317,14 +339,14 @@ func RefreshToken(accessToken string) (model.Token, error) {
 			return model.Token{}, err
 		}
 
-		/*payload := make(map[string]interface{})
+		payload := make(map[string]interface{})
 		payload["access_token"] = token.AccessToken
 
-		jwt, err  := util.CreateTokenWithPayload(payload, privateKey)
+		jwt, err := util.CreateTokenWithPayload(payload, privateKey)
 		if err != nil {
 			return model.Token{}, err
 		}
-		token.JwtToken = jwt*/
+		token.JwtToken = jwt
 
 		return token, nil
 	}
