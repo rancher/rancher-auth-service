@@ -298,6 +298,15 @@ func GetConfig(accessToken string) (model.AuthConfig, error) {
 func Reload() error {
 	//read config from db
 	authConfig, err := GetConfig("")
+	//check if the auth is enabled, if yes then load the provider.
+	if authConfig.Provider == "" {
+		log.Info("No Auth provider configured")
+		return nil
+	}
+	if !providers.IsProviderSupported(authConfig.Provider) {
+		log.Info("Auth provider not supported by rancher-auth-service")
+		return nil
+	}
 
 	newProvider, err := initProviderWithConfig(authConfig)
 	if err != nil {

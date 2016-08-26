@@ -31,3 +31,13 @@ func GetProvider(name string) IdentityProvider {
 		return nil
 	}
 }
+
+//IsProviderSupported returns if provider by name is supported
+func IsProviderSupported(name string) bool {
+	switch name {
+	case "githubconfig":
+		return true
+	default:
+		return false
+	}
+}
