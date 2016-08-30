@@ -10,16 +10,18 @@ import (
 
 //Constants for github
 const (
-	Name                = "github"
-	Config              = Name + "config"
-	TokenType           = Name + "jwt"
-	UserType            = Name + "_user"
-	OrgType             = Name + "_org"
-	TeamType            = Name + "_team"
-	hostnameSetting     = "api.github.domain"
-	schemeSetting       = "api.github.scheme"
-	clientIDSetting     = "api.auth.github.client.id"
-	clientSecretSetting = "api.auth.github.client.secret"
+	Name                           = "github"
+	Config                         = Name + "config"
+	TokenType                      = Name + "jwt"
+	UserType                       = Name + "_user"
+	OrgType                        = Name + "_org"
+	TeamType                       = Name + "_team"
+	hostnameSetting                = "api.github.domain"
+	schemeSetting                  = "api.github.scheme"
+	clientIDSetting                = "api.auth.github.client.id"
+	clientSecretSetting            = "api.auth.github.client.secret"
+	githubAccessModeSetting        = "api.auth.github.access.mode"
+	githubAllowedIdentitiesSetting = "api.auth.github.allowed.identities"
 )
 
 func init() {
@@ -258,4 +260,12 @@ func (g *GProvider) AddProviderConfig(authConfig *model.AuthConfig, providerSett
 	githubConfig.ClientSecret = providerSettings[clientSecretSetting]
 
 	authConfig.GithubConfig = githubConfig
+}
+
+//GetLegacySettings returns the provider specific legacy db settings
+func (g *GProvider) GetLegacySettings() map[string]string {
+	settings := make(map[string]string)
+	settings["accessModeSetting"] = githubAccessModeSetting
+	settings["allowedIdentitiesSetting"] = githubAllowedIdentitiesSetting
+	return settings
 }

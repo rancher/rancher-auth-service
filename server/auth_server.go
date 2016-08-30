@@ -97,6 +97,11 @@ func SetEnv(c *cli.Context) {
 		log.Errorf("Failed to connect to rancher cattle client: %v", err)
 	}
 
+	err = UpgradeSettings()
+	if err != nil {
+		log.Fatalf("Failed to upgrade the existing auth settings in db to new: %v", err)
+	}
+
 	err = Reload()
 	if err != nil {
 		log.Fatalf("Failed to reload the auth config from db on start: %v", err)
@@ -246,6 +251,54 @@ func UpdateConfig(authConfig model.AuthConfig) error {
 	provider = newProvider
 	authConfigInMemory = authConfig
 
+	return nil
+}
+
+//UpgradeSettings upgrades the existing provider specific auth settings to the new generic settings used by this service
+func UpgradeSettings() error {
+	//read the current provider
+	var settings []string
+	settings = append(settings, providerSetting)
+	dbSettings, err := readSettings(settings)
+	if err != nil {
+		log.Errorf("UpgradeSettings: Error reading existing DB settings %v", err)
+		return err
+	}
+
+	providerNameInDb := dbSettings[providerSetting]
+	if providerNameInDb != "" {
+		if providers.IsProviderSupported(providerNameInDb) {
+			//upgrade to new settings and set external provider as true
+			newProvider := providers.GetProvider(providerNameInDb)
+			if newProvider == nil {
+				return fmt.Errorf("UpgradeSettings: Cannot upgrade the setup, could not get the %s auth provider", providerNameInDb)
+			}
+
+			legacySettingsMap := newProvider.GetLegacySettings()
+			var legacySettings []string
+			legacySettings = append(legacySettings, legacySettingsMap["accessModeSetting"])
+			legacySettings = append(legacySettings, legacySettingsMap["allowedIdentitiesSetting"])
+
+			dbLegacySettings, err := readSettings(legacySettings)
+			if err != nil {
+				log.Errorf("UpgradeSettings: Error reading existing DB legacy settings %v", err)
+				return err
+			}
+
+			//add the new settings
+			providerSettings := make(map[string]string)
+			providerSettings[userTypeSetting] = newProvider.GetUserType()
+			providerSettings[accessModeSetting] = dbLegacySettings[legacySettingsMap["accessModeSetting"]]
+			providerSettings[allowedIdentitiesSetting] = dbLegacySettings[legacySettingsMap["allowedIdentitiesSetting"]]
+			providerSettings[providerNameSetting] = providerNameInDb
+			providerSettings[externalProviderSetting] = "true"
+			err = updateSettings(providerSettings)
+			if err != nil {
+				log.Errorf("UpgradeSettings: Error Storing the new external provider settings %v", err)
+				return err
+			}
+		}
+	}
 	return nil
 }
 

@@ -20,6 +20,7 @@ type IdentityProvider interface {
 	GetConfig() model.AuthConfig
 	GetProviderSettingList() []string
 	AddProviderConfig(authConfig *model.AuthConfig, providerSettings map[string]string)
+	GetLegacySettings() map[string]string
 }
 
 //GetProvider returns an instance of an identyityProvider by name
