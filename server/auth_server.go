@@ -173,7 +173,7 @@ func updateSettings(settings map[string]string) error {
 }
 
 func getAllowedIDString(allowedIdentities []client.Identity) string {
-	if provider != nil {
+	if len(allowedIdentities) > 0 {
 		var idArray []string
 		for _, identity := range allowedIdentities {
 			idArray = append(idArray, identity.Id)
@@ -282,14 +282,23 @@ func GetConfig(accessToken string) (model.AuthConfig, error) {
 	}
 
 	providerNameInDb := dbSettings[providerNameSetting]
-	config.Provider = providerNameInDb
-	//add the provider specific config
-	newProvider := providers.GetProvider(config.Provider)
-	if newProvider == nil {
-		return config, fmt.Errorf("Could not get the %s auth provider", config.Provider)
+	if providerNameInDb != "" {
+		if providers.IsProviderSupported(providerNameInDb) {
+			config.Provider = providerNameInDb
+			//add the provider specific config
+			newProvider := providers.GetProvider(config.Provider)
+			if newProvider == nil {
+				log.Errorf("GetConfig: Could not get the %s auth provider", config.Provider)
+				return config, nil
+			}
+			providerSettings, err := readSettings(newProvider.GetProviderSettingList())
+			if err != nil {
+				log.Errorf("GetConfig: Error reading provider DB settings %v", err)
+				return config, nil
+			}
+			newProvider.AddProviderConfig(&config, providerSettings)
+		}
 	}
-	providerSettings, err := readSettings(newProvider.GetProviderSettingList())
-	newProvider.AddProviderConfig(&config, providerSettings)
 
 	return config, nil
 }

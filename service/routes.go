@@ -69,6 +69,7 @@ func NewRouter() *mux.Router {
 	// Application routes
 	router.Methods("POST").Path("/v1-auth/config").Handler(api.ApiHandler(schemas, http.HandlerFunc(UpdateConfig)))
 	router.Methods("GET").Path("/v1-auth/config").Handler(api.ApiHandler(schemas, http.HandlerFunc(GetConfig)))
+	router.Methods("GET").Path("/v1-auth/configs").Handler(api.ApiHandler(schemas, http.HandlerFunc(GetConfig)))
 	router.Methods("POST").Path("/v1-auth/reload").Handler(api.ApiHandler(schemas, http.HandlerFunc(Reload)))
 	router.Methods("POST").Path("/v1-auth/token").Handler(api.ApiHandler(schemas, http.HandlerFunc(CreateToken)))
 	router.Methods("GET").Path("/v1-auth/me/identities").Handler(api.ApiHandler(schemas, http.HandlerFunc(GetIdentities)))

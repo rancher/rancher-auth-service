@@ -190,7 +190,7 @@ func GetConfig(w http.ResponseWriter, r *http.Request) {
 
 	config, err := server.GetConfig(accessToken)
 	if err == nil {
-		//apiContext.Write(&config)
+		//apiContext.Write(&config) -> apicontext cannot include nested structures
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(config)
 	} else {
