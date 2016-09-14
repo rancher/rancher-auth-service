@@ -3,7 +3,6 @@ package service
 import (
 	"net/http"
 	"strconv"
-	//log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
@@ -46,7 +45,7 @@ func NewRouter() *mux.Router {
 
 	// AuthConfig
 	authconfig := schemas.AddType("config", model.AuthConfig{})
-	authconfig.CollectionMethods = []string{"GET"}
+	authconfig.CollectionMethods = []string{"GET", "POST"}
 	authconfig.ResourceMethods = []string{"GET", "POST"}
 	authconfig.PluralName = "configs"
 
