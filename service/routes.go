@@ -1,12 +1,12 @@
 package service
 
 import (
-	"net/http"
-	"strconv"
 	"github.com/gorilla/mux"
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
 	"github.com/rancher/rancher-auth-service/model"
+	"net/http"
+	"strconv"
 )
 
 //Route defines the properties of a go mux http route
