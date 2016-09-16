@@ -181,7 +181,8 @@ func getAllowedIDString(allowedIdentities []client.Identity) string {
 	if len(allowedIdentities) > 0 {
 		var idArray []string
 		for _, identity := range allowedIdentities {
-			idArray = append(idArray, identity.Id)
+			identityID := identity.ExternalIdType + ":" + identity.ExternalId
+			idArray = append(idArray, identityID)
 		}
 		return strings.Join(idArray, ",")
 	}
