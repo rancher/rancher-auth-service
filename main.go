@@ -86,6 +86,24 @@ func main() {
 				"Address to listen to (TCP)",
 			),
 		},
+		cli.StringFlag{
+			Name: "self-signed-key-file",
+			Usage: fmt.Sprintf(
+				"Specify the path to the file containing a self signed certificate's key",
+			),
+		},
+		cli.StringFlag{
+			Name: "self-signed-cert-file",
+			Usage: fmt.Sprintf(
+				"Specify the path to the file containing a self signed certificate",
+			),
+		},
+		cli.StringFlag{
+			Name: "idp-metadata-file",
+			Usage: fmt.Sprintf(
+				"Specify the path to the file containing SAML/Shibboleth IDP Metadata file",
+			),
+		},
 	}
 
 	app.Run(os.Args)
@@ -105,6 +123,11 @@ func StartService(c *cli.Context) {
 	log.SetFormatter(textFormatter)
 
 	log.Info("Starting Rancher Auth service")
+
+	err := server.Reload()
+	if err != nil {
+		log.Fatalf("Failed to reload the auth provider from db on start: %v", err)
+	}
 
 	router := service.NewRouter()
 

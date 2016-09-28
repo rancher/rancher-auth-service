@@ -1,10 +1,12 @@
 package service
 
 import (
+	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
 	"github.com/rancher/rancher-auth-service/model"
+	"github.com/rancher/rancher-auth-service/server"
 	"net/http"
 	"strconv"
 )
@@ -21,6 +23,8 @@ type Route struct {
 type Routes []Route
 
 var schemas *client.Schemas
+
+var router *mux.Router
 
 //NewRouter creates and configures a mux router
 func NewRouter() *mux.Router {
@@ -43,6 +47,10 @@ func NewRouter() *mux.Router {
 	githubconfig := schemas.AddType("githubconfig", model.GithubConfig{})
 	githubconfig.CollectionMethods = []string{}
 
+	// ShibbolethConfig
+	shibbolethconfig := schemas.AddType("shibbolethconfig", model.ShibbolethConfig{})
+	shibbolethconfig.CollectionMethods = []string{}
+
 	// AuthConfig
 	authconfig := schemas.AddType("config", model.AuthConfig{})
 	authconfig.CollectionMethods = []string{"GET", "POST"}
@@ -58,7 +66,7 @@ func NewRouter() *mux.Router {
 	err.CollectionMethods = []string{}
 
 	// API framework routes
-	router := mux.NewRouter().StrictSlash(true)
+	router = mux.NewRouter().StrictSlash(true)
 
 	router.Methods("GET").Path("/").Handler(api.VersionsHandler(schemas, "v1-auth"))
 	router.Methods("GET").Path("/v1-auth/schemas").Handler(api.SchemasHandler(schemas))
@@ -74,8 +82,24 @@ func NewRouter() *mux.Router {
 	router.Methods("GET").Path("/v1-auth/me/identities").Handler(api.ApiHandler(schemas, http.HandlerFunc(GetIdentities)))
 	router.Methods("GET").Path("/v1-auth/identities").Handler(api.ApiHandler(schemas, http.HandlerFunc(SearchIdentities)))
 	router.Methods("GET").Path("/v1-auth/redirectUrl").Handler(api.ApiHandler(schemas, http.HandlerFunc(GetRedirectURL)))
+	router.Methods("GET").Path("/v1-auth/saml/authtoken").Handler(api.ApiHandler(schemas, http.HandlerFunc(GetSamlAuthToken)))
+
+	router.Methods("GET").Path("/v1-auth/saml/login").Name("SamlLogin")
+	router.Methods("POST").Path("/v1-auth/saml/acs").Name("SamlACS")
+	router.Methods("GET").Path("/v1-auth/saml/metadata").Name("SamlMetadata")
+
+	if server.SamlServiceProvider != nil {
+		log.Debugf("Adding saml routes to router")
+		addRouteHandler(server.SamlServiceProvider.RequireAccount(http.HandlerFunc(HandleSamlPost)), "SamlLogin")
+		addRouteHandler(server.SamlServiceProvider, "SamlACS")
+		addRouteHandler(server.SamlServiceProvider, "SamlMetadata")
+	}
 
 	return router
+}
+
+func addRouteHandler(handler http.Handler, name string) {
+	router.Get(name).Handler(handler)
 }
 
 //ReturnHTTPError handles sending out CatalogError response

@@ -55,16 +55,25 @@ func (g *GProvider) GetUserType() string {
 }
 
 //GenerateToken authenticates the given code and returns the token
-func (g *GProvider) GenerateToken(securityCode string) (model.Token, error) {
+func (g *GProvider) GenerateToken(json map[string]string) (model.Token, error) {
 	//getAccessToken
-	log.Debugf("GitHubIdentityProvider GenerateToken called for securityCode %v", securityCode)
-	accessToken, err := g.githubClient.getAccessToken(securityCode)
-	if err != nil {
-		log.Errorf("Error generating accessToken from github %v", err)
-		return model.Token{}, err
+	securityCode := json["code"]
+	accessToken := json["accessToken"]
+
+	if securityCode != "" {
+		log.Debugf("GitHubIdentityProvider GenerateToken called for securityCode %v", securityCode)
+		accessToken, err := g.githubClient.getAccessToken(securityCode)
+		if err != nil {
+			log.Errorf("Error generating accessToken from github %v", err)
+			return model.Token{}, err
+		}
+		log.Debugf("Received AccessToken from github %v", accessToken)
+		return g.createToken(accessToken)
+	} else if accessToken != "" {
+		return g.createToken(accessToken)
+	} else {
+		return model.Token{}, fmt.Errorf("Cannot gerenate token from github, invalid request data")
 	}
-	log.Debugf("Received AccessToken from github %v", accessToken)
-	return g.createToken(accessToken)
 }
 
 func (g *GProvider) createToken(accessToken string) (model.Token, error) {
@@ -100,9 +109,13 @@ func GetUserIdentity(identities []client.Identity, userType string) (client.Iden
 }
 
 //RefreshToken re-authenticates and generate a new token
-func (g *GProvider) RefreshToken(accessToken string) (model.Token, error) {
-	log.Debugf("GitHubIdentityProvider RefreshToken called for accessToken %v", accessToken)
-	return g.createToken(accessToken)
+func (g *GProvider) RefreshToken(json map[string]string) (model.Token, error) {
+	accessToken := json["accessToken"]
+	if accessToken != "" {
+		log.Debugf("GitHubIdentityProvider RefreshToken called for accessToken %v", accessToken)
+		return g.createToken(accessToken)
+	}
+	return model.Token{}, fmt.Errorf("Cannot refresh token from github, no access token found in request")
 }
 
 //GetIdentities returns list of user and group identities associated to this token
@@ -198,7 +211,7 @@ func (g *GProvider) SearchIdentities(name string, exactMatch bool, accessToken s
 }
 
 //LoadConfig initializes the provider with the passes config
-func (g *GProvider) LoadConfig(authConfig model.AuthConfig) error {
+func (g *GProvider) LoadConfig(authConfig *model.AuthConfig) error {
 	configObj := authConfig.GithubConfig
 	g.githubClient.config = &configObj
 	return nil
@@ -237,12 +250,14 @@ func (g *GProvider) GetSettings() map[string]string {
 }
 
 //GetProviderSettingList returns the provider specific db setting list
-func (g *GProvider) GetProviderSettingList() []string {
+func (g *GProvider) GetProviderSettingList(listOnly bool) []string {
 	var settings []string
 	settings = append(settings, hostnameSetting)
 	settings = append(settings, schemeSetting)
 	settings = append(settings, clientIDSetting)
-	settings = append(settings, clientSecretSetting)
+	if !listOnly {
+		settings = append(settings, clientSecretSetting)
+	}
 	return settings
 }
 
@@ -278,4 +293,9 @@ func (g *GProvider) GetRedirectURL() string {
 	redirect = redirect + "/login/oauth/authorize?client_id=" + g.githubClient.config.ClientID + "&scope=read:org"
 
 	return redirect
+}
+
+//GetIdentitySeparator returns the provider specific separator to use to separate allowedIdentities
+func (g *GProvider) GetIdentitySeparator() string {
+	return ","
 }

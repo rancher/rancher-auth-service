@@ -2,17 +2,18 @@ package server
 
 import (
 	"crypto/rsa"
+	"encoding/json"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
-	"github.com/urfave/cli"
-	"net/url"
-	"strconv"
-	"strings"
-
+	"github.com/crewjam/saml/samlsp"
 	"github.com/rancher/go-rancher/client"
 	"github.com/rancher/rancher-auth-service/model"
 	"github.com/rancher/rancher-auth-service/providers"
 	"github.com/rancher/rancher-auth-service/util"
+	"github.com/urfave/cli"
+	"net/url"
+	"strconv"
+	"strings"
 )
 
 const (
@@ -23,15 +24,24 @@ const (
 	providerNameSetting      = "api.auth.provider.name.configured"
 	externalProviderSetting  = "api.auth.external.provider.configured"
 	securitySetting          = "api.security.enabled"
+	apiHostSetting           = "api.host"
+	identitySeparatorSetting = "api.auth.external.provider.identity.separator"
 )
 
 var (
-	provider                                                                     providers.IdentityProvider
-	privateKey                                                                   *rsa.PrivateKey
-	publicKey                                                                    *rsa.PublicKey
-	authConfigInMemory                                                           model.AuthConfig
-	rancherClient                                                                *client.RancherClient
+	provider           providers.IdentityProvider
+	privateKey         *rsa.PrivateKey
+	publicKey          *rsa.PublicKey
+	authConfigInMemory model.AuthConfig
+	//RancherClient is the client configured to connect to Cattle
+	RancherClient                                                                *client.RancherClient
 	publicKeyFile, publicKeyFileContents, privateKeyFile, privateKeyFileContents string
+	selfSignedKeyFile, selfSignedCertFile                                        string
+	//IDPMetadataFile is the path to the metadata file of the Shibboleth IDP
+	IDPMetadataFile string
+	//SamlServiceProvider is the handle to the SamlServiceProvider configured by the router
+	SamlServiceProvider *samlsp.Middleware
+	refreshReqChannel   *chan int
 )
 
 //SetEnv sets the parameters necessary
@@ -86,9 +96,13 @@ func SetEnv(c *cli.Context) {
 		log.Fatalf("CATTLE_SECRET_KEY is not set")
 	}
 
+	selfSignedKeyFile = c.GlobalString("self-signed-key-file")
+	selfSignedCertFile = c.GlobalString("self-signed-cert-file")
+	IDPMetadataFile = c.GlobalString("idp-metadata-file")
+
 	//configure cattle client
 	var err error
-	rancherClient, err = newCattleClient(cattleURL, cattleAPIKey, cattleSecretKey)
+	RancherClient, err = newCattleClient(cattleURL, cattleAPIKey, cattleSecretKey)
 	if err != nil {
 		log.Fatalf("Failed to configure cattle client: %v", err)
 	}
@@ -103,10 +117,8 @@ func SetEnv(c *cli.Context) {
 		log.Fatalf("Failed to upgrade the existing auth settings in db to new: %v", err)
 	}
 
-	err = Reload()
-	if err != nil {
-		log.Fatalf("Failed to reload the auth config from db on start: %v", err)
-	}
+	refChan := make(chan int, 1)
+	refreshReqChannel = &refChan
 }
 
 func newCattleClient(cattleURL string, cattleAccessKey string, cattleSecretKey string) (*client.RancherClient, error) {
@@ -125,11 +137,11 @@ func newCattleClient(cattleURL string, cattleAccessKey string, cattleSecretKey s
 
 func testCattleConnect() error {
 	opts := &client.ListOpts{}
-	_, err := rancherClient.ContainerEvent.List(opts)
+	_, err := RancherClient.ContainerEvent.List(opts)
 	return err
 }
 
-func initProviderWithConfig(authConfig model.AuthConfig) (providers.IdentityProvider, error) {
+func initProviderWithConfig(authConfig *model.AuthConfig) (providers.IdentityProvider, error) {
 	newProvider := providers.GetProvider(authConfig.Provider)
 	if newProvider == nil {
 		return nil, fmt.Errorf("Could not get the %s auth provider", authConfig.Provider)
@@ -146,7 +158,7 @@ func readSettings(settings []string) (map[string]string, error) {
 	var dbSettings = make(map[string]string)
 
 	for _, key := range settings {
-		setting, err := rancherClient.Setting.ById(key)
+		setting, err := RancherClient.Setting.ById(key)
 		if err != nil {
 			log.Errorf("Error reading the setting %v , error: %v", key, err)
 			return dbSettings, err
@@ -161,12 +173,12 @@ func updateSettings(settings map[string]string) error {
 	for key, value := range settings {
 		if value != "" {
 			log.Debugf("Update setting key:%v value: %v", key, value)
-			setting, err := rancherClient.Setting.ById(key)
+			setting, err := RancherClient.Setting.ById(key)
 			if err != nil {
 				log.Errorf("Error getting the setting %v , error: %v", key, err)
 				return err
 			}
-			setting, err = rancherClient.Setting.Update(setting, &client.Setting{
+			setting, err = RancherClient.Setting.Update(setting, &client.Setting{
 				Value: value,
 			})
 			if err != nil {
@@ -178,22 +190,22 @@ func updateSettings(settings map[string]string) error {
 	return nil
 }
 
-func getAllowedIDString(allowedIdentities []client.Identity) string {
+func getAllowedIDString(allowedIdentities []client.Identity, separator string) string {
 	if len(allowedIdentities) > 0 {
 		var idArray []string
 		for _, identity := range allowedIdentities {
 			identityID := identity.ExternalIdType + ":" + identity.ExternalId
 			idArray = append(idArray, identityID)
 		}
-		return strings.Join(idArray, ",")
+		return strings.Join(idArray, separator)
 	}
 	return ""
 }
 
-func getAllowedIdentities(idString string, accessToken string) []client.Identity {
+func getAllowedIdentities(idString string, accessToken string, separator string) []client.Identity {
 	var identities []client.Identity
 	if idString != "" {
-		externalIDList := strings.Split(idString, ",")
+		externalIDList := strings.Split(idString, separator)
 		for _, id := range externalIDList {
 			var identity client.Identity
 			var err error
@@ -228,18 +240,34 @@ func getAllowedIdentities(idString string, accessToken string) []client.Identity
 
 //UpdateConfig updates the config in DB
 func UpdateConfig(authConfig model.AuthConfig) error {
-	newProvider, err := initProviderWithConfig(authConfig)
+
+	if authConfig.Provider == "shibbolethconfig" {
+		authConfig.ShibbolethConfig.IDPMetadataFilePath = IDPMetadataFile
+		authConfig.ShibbolethConfig.SPSelfSignedCertFilePath = selfSignedCertFile
+		authConfig.ShibbolethConfig.SPSelfSignedKeyFilePath = selfSignedKeyFile
+		authConfig.ShibbolethConfig.RancherAPIHost = GetRancherAPIHost()
+	}
+
+	newProvider, err := initProviderWithConfig(&authConfig)
 	if err != nil {
 		log.Errorf("UpdateConfig: Cannot update the config, error initializing the provider %v", err)
 		return err
 	}
 	//store the config to db
+	log.Infof("newProvider %v", newProvider.GetName())
+
+	if authConfig.Provider == "shibbolethconfig" {
+		log.Infof("authConfig %v", authConfig)
+		SamlServiceProvider = authConfig.ShibbolethConfig.SamlServiceProvider
+	}
+
 	providerSettings := newProvider.GetSettings()
 
 	//add the generic settings
 	providerSettings[accessModeSetting] = authConfig.AccessMode
 	providerSettings[userTypeSetting] = newProvider.GetUserType()
-	providerSettings[allowedIdentitiesSetting] = getAllowedIDString(authConfig.AllowedIdentities)
+	providerSettings[identitySeparatorSetting] = newProvider.GetIdentitySeparator()
+	providerSettings[allowedIdentitiesSetting] = getAllowedIDString(authConfig.AllowedIdentities, newProvider.GetIdentitySeparator())
 	providerSettings[providerNameSetting] = authConfig.Provider
 	providerSettings[providerSetting] = authConfig.Provider
 	providerSettings[externalProviderSetting] = "true"
@@ -258,8 +286,17 @@ func UpdateConfig(authConfig model.AuthConfig) error {
 	}
 
 	//switch the in-memory provider
-	provider = newProvider
-	authConfigInMemory = authConfig
+	if provider == nil {
+		provider = newProvider
+		authConfigInMemory = authConfig
+	} else {
+		//reload the in-memory provider
+		err = Reload()
+		if err != nil {
+			log.Errorf("Failed to reload the auth provider from db on updateConfig: %v", err)
+			return err
+		}
+	}
 
 	return nil
 }
@@ -298,6 +335,7 @@ func UpgradeSettings() error {
 			//add the new settings
 			providerSettings := make(map[string]string)
 			providerSettings[userTypeSetting] = newProvider.GetUserType()
+			providerSettings[identitySeparatorSetting] = newProvider.GetIdentitySeparator()
 			providerSettings[accessModeSetting] = dbLegacySettings[legacySettingsMap["accessModeSetting"]]
 			providerSettings[allowedIdentitiesSetting] = dbLegacySettings[legacySettingsMap["allowedIdentitiesSetting"]]
 			providerSettings[providerNameSetting] = providerNameInDb
@@ -313,7 +351,7 @@ func UpgradeSettings() error {
 }
 
 //GetConfig gets the config from DB, gathers the list of settings to read from DB
-func GetConfig(accessToken string) (model.AuthConfig, error) {
+func GetConfig(accessToken string, listOnly bool) (model.AuthConfig, error) {
 	var config model.AuthConfig
 	var settings []string
 
@@ -329,14 +367,13 @@ func GetConfig(accessToken string) (model.AuthConfig, error) {
 	settings = append(settings, providerNameSetting)
 
 	dbSettings, err := readSettings(settings)
-
 	if err != nil {
 		log.Errorf("GetConfig: Error reading DB settings %v", err)
 		return config, err
 	}
 
 	config.AccessMode = dbSettings[accessModeSetting]
-	config.AllowedIdentities = getAllowedIdentities(dbSettings[allowedIdentitiesSetting], accessToken)
+
 	enabled, err := strconv.ParseBool(dbSettings[securitySetting])
 	if err == nil {
 		config.Enabled = enabled
@@ -345,6 +382,7 @@ func GetConfig(accessToken string) (model.AuthConfig, error) {
 	}
 
 	providerNameInDb := dbSettings[providerNameSetting]
+
 	if providerNameInDb != "" {
 		if providers.IsProviderSupported(providerNameInDb) {
 			config.Provider = providerNameInDb
@@ -354,7 +392,8 @@ func GetConfig(accessToken string) (model.AuthConfig, error) {
 				log.Errorf("GetConfig: Could not get the %s auth provider", config.Provider)
 				return config, nil
 			}
-			providerSettings, err := readSettings(newProvider.GetProviderSettingList())
+			config.AllowedIdentities = getAllowedIdentities(dbSettings[allowedIdentitiesSetting], accessToken, newProvider.GetIdentitySeparator())
+			providerSettings, err := readSettings(newProvider.GetProviderSettingList(listOnly))
 			if err != nil {
 				log.Errorf("GetConfig: Error reading provider DB settings %v", err)
 				return config, nil
@@ -368,32 +407,52 @@ func GetConfig(accessToken string) (model.AuthConfig, error) {
 
 //Reload will reload the config from DB and reinit the provider
 func Reload() error {
-	//read config from db
-	authConfig, err := GetConfig("")
-	//check if the auth is enabled, if yes then load the provider.
-	if authConfig.Provider == "" {
-		log.Info("No Auth provider configured")
-		return nil
-	}
-	if !providers.IsProviderSupported(authConfig.Provider) {
-		log.Info("Auth provider not supported by rancher-auth-service")
-		return nil
-	}
+	//put msg on channel, so that any other request can wait
+	select {
+	case *refreshReqChannel <- 1:
+		//read config from db
+		authConfig, err := GetConfig("", false)
 
-	newProvider, err := initProviderWithConfig(authConfig)
-	if err != nil {
-		log.Errorf("Error initializing the provider %v", err)
-		return err
+		//check if the auth is enabled, if yes then load the provider.
+		if authConfig.Provider == "" {
+			log.Info("No Auth provider configured")
+			return nil
+		}
+		if !providers.IsProviderSupported(authConfig.Provider) {
+			log.Info("Auth provider not supported by rancher-auth-service")
+			return nil
+		}
+
+		if authConfig.Provider == "shibbolethconfig" {
+			authConfig.ShibbolethConfig.IDPMetadataFilePath = IDPMetadataFile
+			authConfig.ShibbolethConfig.SPSelfSignedCertFilePath = selfSignedCertFile
+			authConfig.ShibbolethConfig.SPSelfSignedKeyFilePath = selfSignedKeyFile
+			authConfig.ShibbolethConfig.RancherAPIHost = GetRancherAPIHost()
+		}
+
+		log.Info(" Auth provider configured %v", authConfig)
+
+		newProvider, err := initProviderWithConfig(&authConfig)
+		if err != nil {
+			log.Errorf("Error initializing the provider %v", err)
+			return err
+		}
+		if authConfig.Provider == "shibbolethconfig" {
+			SamlServiceProvider = authConfig.ShibbolethConfig.SamlServiceProvider
+		}
+		provider = newProvider
+		authConfigInMemory = authConfig
+		<-*refreshReqChannel
+	default:
+		log.Infof("Reload config is already in process, skipping")
 	}
-	provider = newProvider
-	authConfigInMemory = authConfig
 	return nil
 }
 
 //CreateToken will authenticate with provider and create a jwt token
-func CreateToken(securityCode string) (model.Token, error) {
+func CreateToken(json map[string]string) (model.Token, error) {
 	if provider != nil {
-		token, err := provider.GenerateToken(securityCode)
+		token, err := provider.GenerateToken(json)
 		if err != nil {
 			return model.Token{}, err
 		}
@@ -413,9 +472,9 @@ func CreateToken(securityCode string) (model.Token, error) {
 }
 
 //RefreshToken will refresh a jwt token
-func RefreshToken(accessToken string) (model.Token, error) {
+func RefreshToken(json map[string]string) (model.Token, error) {
 	if provider != nil {
-		token, err := provider.RefreshToken(accessToken)
+		token, err := provider.RefreshToken(json)
 		if err != nil {
 			return model.Token{}, err
 		}
@@ -464,6 +523,65 @@ func SearchIdentities(name string, exactMatch bool, accessToken string) ([]clien
 		return provider.SearchIdentities(name, exactMatch, accessToken)
 	}
 	return []client.Identity{}, fmt.Errorf("No auth provider configured")
+}
+
+//GetSamlAuthToken handles the SAML assertions posted by an IDP
+func GetSamlAuthToken(samlData map[string][]string, redirectBackBase string, redirectBackPath string) (string, string) {
+	//ensure SAML provider is enabled
+	if provider != nil && provider.GetName() == "shibboleth" {
+
+		rancherAPI := GetRancherAPIHost()
+		redirectURL := redirectBackBase + redirectBackPath
+		if redirectURL == "" {
+			//default to api.host setting
+			redirectURL = rancherAPI + redirectBackPath
+		}
+		log.Debugf("GetSamlAuthToken : redirectURL %v ", redirectURL)
+
+		//get the SAML data, create a jwt token and POST to /v1/token with code = "jwt token"
+		mapB, _ := json.Marshal(samlData)
+		log.Debugf("GetSamlAuthToken : samlData %v ", string(mapB))
+
+		inputJSON := make(map[string]string)
+		inputJSON["code"] = string(mapB)
+		outputJSON := make(map[string]interface{})
+
+		tokenURL := rancherAPI + "/v1/token"
+		log.Debugf("GetSamlAuthToken: tokenURL %v ", tokenURL)
+
+		err := RancherClient.Post(tokenURL, inputJSON, &outputJSON)
+		if err != nil {
+			log.Errorf("HandleSAMLPost: Error doing POST /v1/token: %v, data: %v", err, samlData)
+			return "", redirectURL
+		}
+
+		jwt := outputJSON["jwt"].(string)
+		log.Debugf("GetSamlAuthToken: Got token %v ", jwt)
+
+		return jwt, redirectURL
+	}
+	return "", ""
+}
+
+//GetRancherAPIHost reads the api.host setting
+func GetRancherAPIHost() string {
+	var settings []string
+
+	//add the setting
+	settings = append(settings, apiHostSetting)
+	dbSettings, err := readSettings(settings)
+	if err != nil {
+		log.Errorf("getRancherAPIHost: Error reading DB setting %v", err)
+		return "http://localhost:8080"
+	}
+	apiHost := dbSettings[apiHostSetting]
+	if apiHost == "" {
+		apiHost = "http://localhost:8080"
+	}
+
+	log.Debugf("getRancherAPIHost() returning %v ", apiHost)
+
+	return apiHost
 }
 
 //GetRedirectURL returns the redirect URL for the provider if applicable
