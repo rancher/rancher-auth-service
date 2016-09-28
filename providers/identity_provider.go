@@ -21,6 +21,7 @@ type IdentityProvider interface {
 	GetProviderSettingList() []string
 	AddProviderConfig(authConfig *model.AuthConfig, providerSettings map[string]string)
 	GetLegacySettings() map[string]string
+	GetRedirectURL() string
 }
 
 //GetProvider returns an instance of an identyityProvider by name

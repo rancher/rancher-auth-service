@@ -5,6 +5,7 @@ import (
 	"fmt"
 	log "github.com/Sirupsen/logrus"
 	"github.com/urfave/cli"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -455,4 +456,29 @@ func SearchIdentities(name string, exactMatch bool, accessToken string) ([]clien
 		return provider.SearchIdentities(name, exactMatch, accessToken)
 	}
 	return []client.Identity{}, fmt.Errorf("No auth provider configured")
+}
+
+//GetRedirectURL returns the redirect URL for the provider if applicable
+func GetRedirectURL() (map[string]string, error) {
+	response := make(map[string]string)
+	if provider != nil {
+		redirect := provider.GetRedirectURL()
+		response["redirectUrl"] = URLEncoded(redirect)
+		response["provider"] = provider.GetName()
+		log.Debugf("GetRedirectURL: returning response %v", response)
+		return response, nil
+	}
+	return response, fmt.Errorf("No auth provider configured")
+}
+
+//URLEncoded escape url query
+func URLEncoded(str string) string {
+	u, err := url.Parse(str)
+	if err != nil {
+		log.Errorf("Error encoding the url: %s , error: %v", str, err)
+		return str
+	}
+
+	u.RawQuery = u.Query().Encode()
+	return u.String()
 }

@@ -266,3 +266,16 @@ func (g *GProvider) GetLegacySettings() map[string]string {
 	settings["allowedIdentitiesSetting"] = githubAllowedIdentitiesSetting
 	return settings
 }
+
+//GetRedirectURL returns the provider specific redirect URL used by UI
+func (g *GProvider) GetRedirectURL() string {
+	redirect := ""
+	if g.githubClient.config.Hostname != "" {
+		redirect = g.githubClient.config.Scheme + g.githubClient.config.Hostname
+	} else {
+		redirect = githubDefaultHostName
+	}
+	redirect = redirect + "/login/oauth/authorize?clientId=" + g.githubClient.config.ClientID + "&scope=read:org"
+
+	return redirect
+}

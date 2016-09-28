@@ -209,3 +209,16 @@ func Reload(w http.ResponseWriter, r *http.Request) {
 		ReturnHTTPError(w, r, http.StatusInternalServerError, "Failed to reload the auth config")
 	}
 }
+
+//GetRedirectURL gets the redirect URL
+func GetRedirectURL(w http.ResponseWriter, r *http.Request) {
+	redirectResponse, err := server.GetRedirectURL()
+	if err == nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(redirectResponse)
+	} else {
+		//failed to get the redirectURL
+		log.Debugf("GetRedirectUrl failed with error %v", err)
+		ReturnHTTPError(w, r, http.StatusInternalServerError, "Failed to get the redirect URL")
+	}
+}
