@@ -249,7 +249,7 @@ func UpdateConfig(authConfig model.AuthConfig) error {
 		return err
 	}
 	//set the security setting last specifically
-	providerSettings := make(map[string]string)
+	providerSettings = make(map[string]string)
 	providerSettings[securitySetting] = strconv.FormatBool(authConfig.Enabled)
 	err = updateSettings(providerSettings)
 	if err != nil {
