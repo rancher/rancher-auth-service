@@ -240,15 +240,23 @@ func UpdateConfig(authConfig model.AuthConfig) error {
 	providerSettings[accessModeSetting] = authConfig.AccessMode
 	providerSettings[userTypeSetting] = newProvider.GetUserType()
 	providerSettings[allowedIdentitiesSetting] = getAllowedIDString(authConfig.AllowedIdentities)
-	providerSettings[securitySetting] = strconv.FormatBool(authConfig.Enabled)
 	providerSettings[providerNameSetting] = authConfig.Provider
 	providerSettings[providerSetting] = authConfig.Provider
 	providerSettings[externalProviderSetting] = "true"
 	err = updateSettings(providerSettings)
 	if err != nil {
-		log.Errorf("Error Storing the provider settings %v", err)
+		log.Errorf("UpdateConfig: Error Storing the provider settings %v", err)
 		return err
 	}
+	//set the security setting last specifically
+	providerSettings := make(map[string]string)
+	providerSettings[securitySetting] = strconv.FormatBool(authConfig.Enabled)
+	err = updateSettings(providerSettings)
+	if err != nil {
+		log.Errorf("UpdateConfig: Error Storing the provider security setting %v", err)
+		return err
+	}
+
 	//switch the in-memory provider
 	provider = newProvider
 	authConfigInMemory = authConfig

@@ -275,7 +275,7 @@ func (g *GProvider) GetRedirectURL() string {
 	} else {
 		redirect = githubDefaultHostName
 	}
-	redirect = redirect + "/login/oauth/authorize?clientId=" + g.githubClient.config.ClientID + "&scope=read:org"
+	redirect = redirect + "/login/oauth/authorize?client_id=" + g.githubClient.config.ClientID + "&scope=read:org"
 
 	return redirect
 }
