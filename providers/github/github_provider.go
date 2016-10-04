@@ -200,9 +200,6 @@ func (g *GProvider) SearchIdentities(name string, exactMatch bool, accessToken s
 //LoadConfig initializes the provider with the passes config
 func (g *GProvider) LoadConfig(authConfig model.AuthConfig) error {
 	configObj := authConfig.GithubConfig
-	if configObj.ClientID == "" || configObj.ClientSecret == "" {
-		return fmt.Errorf("Missing ClientID or ClientSecret in githubConfig")
-	}
 	g.githubClient.config = &configObj
 	return nil
 }
@@ -268,4 +265,17 @@ func (g *GProvider) GetLegacySettings() map[string]string {
 	settings["accessModeSetting"] = githubAccessModeSetting
 	settings["allowedIdentitiesSetting"] = githubAllowedIdentitiesSetting
 	return settings
+}
+
+//GetRedirectURL returns the provider specific redirect URL used by UI
+func (g *GProvider) GetRedirectURL() string {
+	redirect := ""
+	if g.githubClient.config.Hostname != "" {
+		redirect = g.githubClient.config.Scheme + g.githubClient.config.Hostname
+	} else {
+		redirect = githubDefaultHostName
+	}
+	redirect = redirect + "/login/oauth/authorize?clientId=" + g.githubClient.config.ClientID + "&scope=read:org"
+
+	return redirect
 }
