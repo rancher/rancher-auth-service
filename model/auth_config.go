@@ -10,4 +10,5 @@ type AuthConfig struct {
 	AccessMode        string            `json:"accessMode"`
 	AllowedIdentities []client.Identity `json:"allowedIdentities"`
 	GithubConfig      GithubConfig      `json:"githubConfig"`
+	ShibbolethConfig  ShibbolethConfig  `json:"shibbolethConfig"`
 }

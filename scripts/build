@@ -1,10 +1,10 @@
 #!/bin/bash
-set -e
+set -e -x
 
 source $(dirname $0)/version
 
 cd $(dirname $0)/..
 
 mkdir -p bin
-[ "$(uname)" != "Darwin" ] && LINKFLAGS="-linkmode external -extldflags -static -s"
-go build -ldflags "-X main.VERSION=$VERSION $LINKFLAGS" -o bin/rancher-auth-service
+[ "$(uname)" != "Darwin" ] && LINKFLAGS="-extldflags -static -s"
+go build -tags static -ldflags "-X main.VERSION=$VERSION $LINKFLAGS" -o bin/rancher-auth-service
