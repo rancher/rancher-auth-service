@@ -4,18 +4,20 @@ import (
 	"encoding/json"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
-	"github.com/rancher/go-rancher/api"
-	"github.com/rancher/go-rancher/client"
-	"github.com/rancher/rancher-auth-service/model"
-	"github.com/rancher/rancher-auth-service/server"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
+
+	"github.com/rancher/go-rancher/api"
+	"github.com/rancher/go-rancher/client"
+	"github.com/rancher/rancher-auth-service/model"
+	"github.com/rancher/rancher-auth-service/server"
 )
 
 const (
-	samlParam        = "samlJson"
+	samlParam        = "samlJWT"
 	redirectBackBase = "redirectBackBase"
 	redirectBackPath = "redirectBackPath"
 	getSamlAuthToken = "/v1-auth/saml/authtoken"
@@ -44,9 +46,9 @@ func CreateToken(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Errorf("GetToken failed with error: %v", err)
 			ReturnHTTPError(w, r, http.StatusInternalServerError, fmt.Sprintf("Error getting the token: %v", err))
-		} else {
-			api.GetApiContext(r).Write(&token)
+			return
 		}
+		api.GetApiContext(r).Write(&token)
 	} else if accessToken != "" {
 		log.Debugf("RefreshToken called with accessToken %s", accessToken)
 		//getToken
@@ -54,11 +56,12 @@ func CreateToken(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Errorf("GetToken failed with error: %v", err)
 			ReturnHTTPError(w, r, http.StatusInternalServerError, fmt.Sprintf("Error getting the token: %v", err))
-		} else {
-			api.GetApiContext(r).Write(&token)
+			return
 		}
+		api.GetApiContext(r).Write(&token)
 	} else {
 		ReturnHTTPError(w, r, http.StatusBadRequest, "Bad Request, Please check the request content")
+		return
 	}
 }
 
@@ -72,6 +75,7 @@ func GetIdentities(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(authHeader, "Bearer ") {
 			log.Debugf("GetMyIdentities Failed to find Bearer token %v", authHeader)
 			ReturnHTTPError(w, r, http.StatusUnauthorized, "Unauthorized, please provide a valid token")
+			return
 		}
 		accessToken := strings.TrimPrefix(authHeader, "Bearer ")
 		identities, err := server.GetIdentities(accessToken)
@@ -85,10 +89,12 @@ func GetIdentities(w http.ResponseWriter, r *http.Request) {
 			//failed to get the user identities
 			log.Debugf("GetIdentities Failed with error %v", err)
 			ReturnHTTPError(w, r, http.StatusUnauthorized, "Unauthorized, failed to get identities")
+			return
 		}
 	} else {
 		log.Debug("No Authorization header found")
 		ReturnHTTPError(w, r, http.StatusUnauthorized, "Unauthorized, please provide a valid token")
+		return
 	}
 }
 
@@ -102,6 +108,7 @@ func SearchIdentities(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(authHeader, "Bearer") {
 			log.Debugf("GetMyIdentities Failed to find Bearer token %v", authHeader)
 			ReturnHTTPError(w, r, http.StatusUnauthorized, "Unauthorized, please provide a valid token")
+			return
 		}
 		accessToken := strings.TrimPrefix(authHeader, "Bearer")
 		accessToken = strings.TrimSpace(accessToken)
@@ -121,6 +128,7 @@ func SearchIdentities(w http.ResponseWriter, r *http.Request) {
 				//failed to search the identities
 				log.Errorf("SearchIdentities Failed with error %v", err)
 				ReturnHTTPError(w, r, http.StatusInternalServerError, "Internal Server Error")
+				return
 			}
 		} else if name != "" {
 			log.Debugf("SearchIdentities by name: %v", name)
@@ -135,13 +143,16 @@ func SearchIdentities(w http.ResponseWriter, r *http.Request) {
 				//failed to search the identities
 				log.Errorf("SearchIdentities Failed with error %v", err)
 				ReturnHTTPError(w, r, http.StatusInternalServerError, "Internal Server Error")
+				return
 			}
 		} else {
 			ReturnHTTPError(w, r, http.StatusBadRequest, "Bad Request, Please check the request content")
+			return
 		}
 	} else {
 		log.Debug("No Authorization header found")
 		ReturnHTTPError(w, r, http.StatusUnauthorized, "Unauthorized, please provide a valid token")
+		return
 	}
 }
 
@@ -152,6 +163,7 @@ func UpdateConfig(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Errorf("UpdateConfig failed with error: %v", err)
 		ReturnHTTPError(w, r, http.StatusBadRequest, "Bad Request, Please check the request content")
+		return
 	}
 	var authConfig model.AuthConfig
 
@@ -159,35 +171,38 @@ func UpdateConfig(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Errorf("UpdateConfig unmarshal failed with error: %v", err)
 		ReturnHTTPError(w, r, http.StatusBadRequest, "Bad Request, Please check the request content")
+		return
 	}
 
 	if authConfig.Provider == "" {
 		log.Errorf("UpdateConfig: Provider is a required field")
 		ReturnHTTPError(w, r, http.StatusBadRequest, "Bad Request, Please check the request content, Provider is a required field")
+		return
 	}
 
 	err = server.UpdateConfig(authConfig)
 	if err != nil {
 		log.Errorf("UpdateConfig failed with error: %v", err)
 		ReturnHTTPError(w, r, http.StatusBadRequest, "Bad Request, Please check the request content")
-	} else {
-		log.Debugf("Updated config, listing the config back")
-		if authConfig.Provider == "shibbolethconfig" {
-			//enable the saml SP wrapper over the saml routes
-			addRouteHandler(server.SamlServiceProvider.RequireAccount(http.HandlerFunc(HandleSamlPost)), "SamlLogin")
-			addRouteHandler(server.SamlServiceProvider, "SamlACS")
-			addRouteHandler(server.SamlServiceProvider, "SamlMetadata")
-		}
+		return
+	}
+	log.Debugf("Updated config, listing the config back")
+	if authConfig.Provider == "shibbolethconfig" {
+		//enable the saml SP wrapper over the saml routes
+		addRouteHandler(server.SamlServiceProvider.RequireAccount(http.HandlerFunc(HandleSamlPost)), "SamlLogin")
+		addRouteHandler(server.SamlServiceProvider, "SamlACS")
+		addRouteHandler(server.SamlServiceProvider, "SamlMetadata")
+	}
 
-		//list the config and return in response
-		config, err := server.GetConfig("", true)
-		if err == nil {
-			apiContext.Write(&config)
-		} else {
-			//failed to get the config
-			log.Debugf("GetConfig failed with error %v", err)
-			ReturnHTTPError(w, r, http.StatusInternalServerError, "Failed to list the config")
-		}
+	//list the config and return in response
+	config, err := server.GetConfig("", true)
+	if err == nil {
+		apiContext.Write(&config)
+	} else {
+		//failed to get the config
+		log.Debugf("GetConfig failed with error %v", err)
+		ReturnHTTPError(w, r, http.StatusInternalServerError, "Failed to list the config")
+		return
 	}
 }
 
@@ -201,6 +216,7 @@ func GetConfig(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(authHeader, "Bearer ") {
 			log.Errorf("GetMyIdentities Failed to find Bearer token %v", authHeader)
 			ReturnHTTPError(w, r, http.StatusUnauthorized, "Unauthorized, please provide a valid token")
+			return
 		}
 		accessToken = strings.TrimPrefix(authHeader, "Bearer ")
 	}
@@ -212,6 +228,7 @@ func GetConfig(w http.ResponseWriter, r *http.Request) {
 		//failed to get the config
 		log.Debugf("GetConfig failed with error %v", err)
 		ReturnHTTPError(w, r, http.StatusInternalServerError, "Failed to get the auth config")
+		return
 	}
 }
 
@@ -223,6 +240,7 @@ func Reload(w http.ResponseWriter, r *http.Request) {
 		//failed to reload the config from DB
 		log.Debugf("Reload failed with error %v", err)
 		ReturnHTTPError(w, r, http.StatusInternalServerError, "Failed to reload the auth config")
+		return
 	}
 }
 
@@ -230,6 +248,9 @@ func Reload(w http.ResponseWriter, r *http.Request) {
 func HandleSamlPost(w http.ResponseWriter, r *http.Request) {
 	//get all X-Saml- headers and pass it to the provider
 	log.Debugf("HandleSamlPost: request url is %v", r.URL.String())
+	cookie, _ := r.Cookie("token")
+	log.Infof("token cookie: %v", cookie)
+
 	samlData := make(map[string][]string)
 
 	for key, val := range r.Header {
@@ -245,6 +266,7 @@ func HandleSamlPost(w http.ResponseWriter, r *http.Request) {
 		//failed to get the saml data
 		log.Debugf("HandleSamlPost failed to unmarshal saml data with error %v", err)
 		ReturnHTTPError(w, r, http.StatusInternalServerError, "Failed to unmarshal the saml data")
+		return
 	}
 	log.Debugf("HandleSamlPost saml %v ", string(mapB))
 
@@ -259,12 +281,22 @@ func HandleSamlPost(w http.ResponseWriter, r *http.Request) {
 	}
 	redirectURL := redirectBackBaseParam + getSamlAuthToken
 	v := r.URL.Query()
-	v.Add(samlParam, string(mapB))
+	v.Add(samlParam, string(cookie.Value))
 	queryStr := v.Encode()
 
 	redirectURL = redirectURL + "?" + queryStr
 
 	log.Debugf("redirecting the user to %v", redirectURL)
+
+	tokenCookie := &http.Cookie{
+		Name:    "token",
+		Value:   "",
+		Secure:  false,
+		Path:    "/",
+		MaxAge:  -1,
+		Expires: time.Date(1982, time.February, 10, 23, 0, 0, 0, time.UTC),
+	}
+	http.SetCookie(w, tokenCookie)
 
 	http.Redirect(w, r, redirectURL, http.StatusFound)
 
@@ -274,27 +306,42 @@ func HandleSamlPost(w http.ResponseWriter, r *http.Request) {
 func GetSamlAuthToken(w http.ResponseWriter, r *http.Request) {
 	log.Debugf("GetSamlAuthToken : url is %v", r.URL.String())
 
-	samlData := make(map[string][]string)
-
 	query, err := url.ParseQuery(r.URL.RawQuery)
-
 	if err != nil {
 		//failed to get the url query parameters
-		log.Debugf("GetSamlAuthToken failed to parse query params with error %v", err)
+		log.Errorf("GetSamlAuthToken failed to parse query params with error %v", err)
 		ReturnHTTPError(w, r, http.StatusInternalServerError, "Failed to get the auth query parameters")
+		return
 	}
 
-	err = json.Unmarshal([]byte(query.Get(samlParam)), &samlData)
+	redirectURL := server.GetSamlRedirectURL(query.Get(redirectBackBase), query.Get(redirectBackPath))
 
-	if err != nil {
-		//failed to get the url query parameters
-		log.Debugf("GetSamlAuthToken failed to unmarshal query param with error %v", err)
-		ReturnHTTPError(w, r, http.StatusInternalServerError, "Failed to unmarshal the auth query params")
+	samlJWT := query.Get(samlParam)
+	ok, samlData := server.IsSamlJWTValid(samlJWT)
+
+	if !ok {
+		//failed to validate the SAML JWT
+		log.Errorf("GetSamlAuthToken failed to validate the SAML JWT")
+		redirectURL = addErrorToRedirect(redirectURL, "401")
+		http.Redirect(w, r, redirectURL, http.StatusFound)
+		return
+	}
+	log.Debugf("Received SAML  data %v", samlData)
+	jwt, errToken := server.GetSamlAuthToken(samlData)
+
+	if errToken != nil {
+		//failed to get token from cattle
+		log.Errorf("GetSamlAuthToken failed to Get token from cattle with error %v", errToken.Error())
+		if strings.Contains(errToken.Error(), "401") {
+			//add error=401 query param to redirect
+			redirectURL = addErrorToRedirect(redirectURL, "401")
+		} else {
+			redirectURL = addErrorToRedirect(redirectURL, "500")
+		}
+		http.Redirect(w, r, redirectURL, http.StatusFound)
+		return
 	}
 
-	log.Debugf("Received a SAML  data %v", samlData)
-
-	jwt, redirectURL := server.GetSamlAuthToken(samlData, query.Get(redirectBackBase), query.Get(redirectBackPath))
 	tokenCookie := &http.Cookie{
 		Name:   "token",
 		Value:  jwt,
@@ -309,6 +356,21 @@ func GetSamlAuthToken(w http.ResponseWriter, r *http.Request) {
 
 }
 
+func addErrorToRedirect(redirectURL string, code string) string {
+	//add code query param to redirect
+	redirectURLInst, err := url.Parse(redirectURL)
+	if err == nil {
+		v := redirectURLInst.Query()
+		v.Add("errCode", code)
+		redirectURLInst.RawQuery = v.Encode()
+		redirectURL = redirectURLInst.String()
+	} else {
+		log.Errorf("Error parsing the URL %v  ,error is: %v", redirectURL, err)
+		redirectURL = redirectURL + "?errCode=" + code
+	}
+	return redirectURL
+}
+
 //GetRedirectURL gets the redirect URL
 func GetRedirectURL(w http.ResponseWriter, r *http.Request) {
 	redirectResponse, err := server.GetRedirectURL()
@@ -319,5 +381,23 @@ func GetRedirectURL(w http.ResponseWriter, r *http.Request) {
 		//failed to get the redirectURL
 		log.Debugf("GetRedirectUrl failed with error %v", err)
 		ReturnHTTPError(w, r, http.StatusInternalServerError, "Failed to get the redirect URL")
+		return
+	}
+}
+
+//DoSamlLogout redirects to Saml Logout
+func DoSamlLogout(w http.ResponseWriter, r *http.Request) {
+	if server.SamlServiceProvider != nil {
+		if server.SamlServiceProvider.ServiceProvider.IDPMetadata != nil {
+			entityID := server.SamlServiceProvider.ServiceProvider.IDPMetadata.EntityID
+			entityURL, _ := url.Parse(entityID)
+			redirectURL := entityURL.Scheme + "://" + entityURL.Host + "/idp/profile/Logout"
+			log.Debugf("redirecting the user to %v", redirectURL)
+			http.Redirect(w, r, redirectURL, http.StatusFound)
+			return
+		}
+		log.Info("No Logout URL - Saml/Shibboleth IDPMetadata not found")
+	} else {
+		log.Info("No Logout URL - Saml/Shibboleth provider is not configured")
 	}
 }

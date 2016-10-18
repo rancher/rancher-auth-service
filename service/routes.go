@@ -83,6 +83,7 @@ func NewRouter() *mux.Router {
 	router.Methods("GET").Path("/v1-auth/identities").Handler(api.ApiHandler(schemas, http.HandlerFunc(SearchIdentities)))
 	router.Methods("GET").Path("/v1-auth/redirectUrl").Handler(api.ApiHandler(schemas, http.HandlerFunc(GetRedirectURL)))
 	router.Methods("GET").Path("/v1-auth/saml/authtoken").Handler(api.ApiHandler(schemas, http.HandlerFunc(GetSamlAuthToken)))
+	router.Methods("GET").Path("/v1-auth/saml/logout").Handler(api.ApiHandler(schemas, http.HandlerFunc(DoSamlLogout)))
 
 	router.Methods("GET").Path("/v1-auth/saml/login").Name("SamlLogin")
 	router.Methods("POST").Path("/v1-auth/saml/acs").Name("SamlACS")
@@ -116,5 +117,4 @@ func ReturnHTTPError(w http.ResponseWriter, r *http.Request, httpStatus int, err
 
 	api.CreateApiContext(w, r, schemas)
 	api.GetApiContext(r).Write(&err)
-
 }

@@ -119,12 +119,15 @@ func (sp *SPClient) getShibIdentities(samlData map[string][]string) ([]Account, 
 		shibAcct := Account{}
 		shibAcct.UID = uid[0]
 
-		displayName := samlData[strings.ToLower(sp.config.DisplayNameField)]
-		shibAcct.DisplayName = displayName[0]
+		displayName, ok := samlData[strings.ToLower(sp.config.DisplayNameField)]
+		if ok {
+			shibAcct.DisplayName = displayName[0]
+		}
 
-		userName := samlData[strings.ToLower(sp.config.UserNameField)]
-		shibAcct.UserName = userName[0]
-
+		userName, ok := samlData[strings.ToLower(sp.config.UserNameField)]
+		if ok {
+			shibAcct.UserName = userName[0]
+		}
 		shibAcct.IsGroup = false
 
 		shibAccts = append(shibAccts, shibAcct)

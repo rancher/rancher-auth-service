@@ -3,17 +3,20 @@ package server
 import (
 	"crypto/rsa"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
 	"github.com/crewjam/saml/samlsp"
-	"github.com/rancher/go-rancher/client"
-	"github.com/rancher/rancher-auth-service/model"
-	"github.com/rancher/rancher-auth-service/providers"
-	"github.com/rancher/rancher-auth-service/util"
+	"github.com/dgrijalva/jwt-go"
 	"github.com/urfave/cli"
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/rancher/go-rancher/client"
+	"github.com/rancher/rancher-auth-service/model"
+	"github.com/rancher/rancher-auth-service/providers"
+	"github.com/rancher/rancher-auth-service/util"
 )
 
 const (
@@ -256,11 +259,6 @@ func UpdateConfig(authConfig model.AuthConfig) error {
 	//store the config to db
 	log.Infof("newProvider %v", newProvider.GetName())
 
-	if authConfig.Provider == "shibbolethconfig" {
-		log.Infof("authConfig %v", authConfig)
-		SamlServiceProvider = authConfig.ShibbolethConfig.SamlServiceProvider
-	}
-
 	providerSettings := newProvider.GetSettings()
 
 	//add the generic settings
@@ -287,6 +285,9 @@ func UpdateConfig(authConfig model.AuthConfig) error {
 
 	//switch the in-memory provider
 	if provider == nil {
+		if authConfig.Provider == "shibbolethconfig" {
+			SamlServiceProvider = authConfig.ShibbolethConfig.SamlServiceProvider
+		}
 		provider = newProvider
 		authConfigInMemory = authConfig
 	} else {
@@ -416,10 +417,12 @@ func Reload() error {
 		//check if the auth is enabled, if yes then load the provider.
 		if authConfig.Provider == "" {
 			log.Info("No Auth provider configured")
+			<-*refreshReqChannel
 			return nil
 		}
 		if !providers.IsProviderSupported(authConfig.Provider) {
 			log.Info("Auth provider not supported by rancher-auth-service")
+			<-*refreshReqChannel
 			return nil
 		}
 
@@ -430,11 +433,12 @@ func Reload() error {
 			authConfig.ShibbolethConfig.RancherAPIHost = GetRancherAPIHost()
 		}
 
-		log.Info(" Auth provider configured %v", authConfig)
+		log.Infof(" Auth provider configured %v", authConfig.Provider)
 
 		newProvider, err := initProviderWithConfig(&authConfig)
 		if err != nil {
 			log.Errorf("Error initializing the provider %v", err)
+			<-*refreshReqChannel
 			return err
 		}
 		if authConfig.Provider == "shibbolethconfig" {
@@ -526,18 +530,10 @@ func SearchIdentities(name string, exactMatch bool, accessToken string) ([]clien
 }
 
 //GetSamlAuthToken handles the SAML assertions posted by an IDP
-func GetSamlAuthToken(samlData map[string][]string, redirectBackBase string, redirectBackPath string) (string, string) {
+func GetSamlAuthToken(samlData map[string][]string) (string, error) {
 	//ensure SAML provider is enabled
 	if provider != nil && provider.GetName() == "shibboleth" {
-
 		rancherAPI := GetRancherAPIHost()
-		redirectURL := redirectBackBase + redirectBackPath
-		if redirectURL == "" {
-			//default to api.host setting
-			redirectURL = rancherAPI + redirectBackPath
-		}
-		log.Debugf("GetSamlAuthToken : redirectURL %v ", redirectURL)
-
 		//get the SAML data, create a jwt token and POST to /v1/token with code = "jwt token"
 		mapB, _ := json.Marshal(samlData)
 		log.Debugf("GetSamlAuthToken : samlData %v ", string(mapB))
@@ -552,15 +548,15 @@ func GetSamlAuthToken(samlData map[string][]string, redirectBackBase string, red
 		err := RancherClient.Post(tokenURL, inputJSON, &outputJSON)
 		if err != nil {
 			log.Errorf("HandleSAMLPost: Error doing POST /v1/token: %v, data: %v", err, samlData)
-			return "", redirectURL
+			return "", err
 		}
 
 		jwt := outputJSON["jwt"].(string)
 		log.Debugf("GetSamlAuthToken: Got token %v ", jwt)
 
-		return jwt, redirectURL
+		return jwt, nil
 	}
-	return "", ""
+	return "", nil
 }
 
 //GetRancherAPIHost reads the api.host setting
@@ -607,4 +603,55 @@ func URLEncoded(str string) string {
 
 	u.RawQuery = u.Query().Encode()
 	return u.String()
+}
+
+//GetSamlRedirectURL returns the redirect URL for SAML login flow
+func GetSamlRedirectURL(redirectBackBase string, redirectBackPath string) string {
+	redirectURL := ""
+	if provider != nil && provider.GetName() == "shibboleth" {
+		rancherAPI := GetRancherAPIHost()
+		redirectURL = redirectBackBase + redirectBackPath
+		if redirectURL == "" {
+			//default to api.host setting
+			redirectURL = rancherAPI + redirectBackPath
+		}
+		log.Debugf("GetSamlRedirectURL : redirectURL %v ", redirectURL)
+	}
+	return redirectURL
+}
+
+//IsSamlJWTValid verfies the saml JWT token
+func IsSamlJWTValid(value string) (bool, map[string][]string) {
+	samlData := make(map[string][]string)
+	if provider != nil && provider.GetName() == "shibboleth" {
+		if SamlServiceProvider != nil {
+			token, err := jwt.Parse(value, func(t *jwt.Token) (interface{}, error) {
+				secretBlock, _ := pem.Decode([]byte(SamlServiceProvider.ServiceProvider.Key))
+				return secretBlock.Bytes, nil
+			})
+			if err != nil || !token.Valid {
+				log.Infof("IsSamlJWTValid: invalid token: %s", err)
+				return false, samlData
+			}
+
+			if claims, ok := token.Claims.(jwt.MapClaims); ok {
+				for key, values := range claims {
+					if key == "exp" {
+						continue
+					}
+					valueSlice := values.([]interface{})
+					valueStrs := make([]string, len(valueSlice))
+					for i, value := range valueSlice {
+						valueStrs[i] = value.(string)
+					}
+					samlData[key] = valueStrs
+				}
+			} else {
+				log.Infof("IsSamlJWTValid: claims not found in token")
+				return false, samlData
+			}
+			return true, samlData
+		}
+	}
+	return false, samlData
 }
