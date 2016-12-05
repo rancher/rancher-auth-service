@@ -401,6 +401,8 @@ func GetConfig(accessToken string, listOnly bool) (model.AuthConfig, error) {
 			}
 			newProvider.AddProviderConfig(&config, providerSettings)
 		}
+	} else {
+		config.Provider = dbSettings[providerSetting]
 	}
 
 	return config, nil
@@ -421,7 +423,7 @@ func Reload() error {
 			return nil
 		}
 		if !providers.IsProviderSupported(authConfig.Provider) {
-			log.Info("Auth provider not supported by rancher-auth-service")
+			log.Debug("Auth provider not supported by rancher-auth-service")
 			<-*refreshReqChannel
 			return nil
 		}
