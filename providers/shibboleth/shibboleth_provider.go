@@ -271,3 +271,7 @@ func (s *SProvider) GetRedirectURL() string {
 func (s *SProvider) GetIdentitySeparator() string {
 	return "#shibsaml#"
 }
+
+func (s *SProvider) TestLogin(testAuthConfig *model.TestAuthConfig) error {
+	return nil
+}

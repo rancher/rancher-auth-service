@@ -299,3 +299,7 @@ func (g *GProvider) GetRedirectURL() string {
 func (g *GProvider) GetIdentitySeparator() string {
 	return ","
 }
+
+func (g *GProvider) TestLogin(testAuthConfig *model.TestAuthConfig) error {
+	return nil
+}

@@ -4,6 +4,7 @@ import (
 	"github.com/rancher/go-rancher/v2"
 	"github.com/rancher/rancher-auth-service/model"
 	"github.com/rancher/rancher-auth-service/providers/github"
+	ad "github.com/rancher/rancher-auth-service/providers/ldap/ad"
 	"github.com/rancher/rancher-auth-service/providers/shibboleth"
 )
 
@@ -24,6 +25,7 @@ type IdentityProvider interface {
 	GetLegacySettings() map[string]string
 	GetRedirectURL() string
 	GetIdentitySeparator() string
+	TestLogin(testAuthConfig *model.TestAuthConfig) error
 }
 
 //GetProvider returns an instance of an identyityProvider by name
@@ -33,6 +35,8 @@ func GetProvider(name string) IdentityProvider {
 		return github.InitializeProvider()
 	case "shibbolethconfig":
 		return shibboleth.InitializeProvider()
+	case "ldapconfig":
+		return ad.InitializeProvider()
 	default:
 		return nil
 	}
@@ -44,6 +48,8 @@ func IsProviderSupported(name string) bool {
 	case "githubconfig":
 		return true
 	case "shibbolethconfig":
+		return true
+	case "ldapconfig":
 		return true
 	default:
 		return false

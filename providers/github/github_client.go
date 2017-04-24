@@ -4,15 +4,15 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	log "github.com/Sirupsen/logrus"
-	"github.com/tomnomnom/linkheader"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/rancher/rancher-auth-service/model"
+	"github.com/tomnomnom/linkheader"
 )
 
 const (
