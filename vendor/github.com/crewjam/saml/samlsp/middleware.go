@@ -124,12 +124,10 @@ func (m *Middleware) RequireAccount(handler http.Handler) http.Handler {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-
 		// relayState is limited to 80 bytes but also must be integrety protected.
 		// this means that we cannot use a JWT because it is way to long. Instead
 		// we set a cookie that corresponds to the state
 		relayState := base64.URLEncoding.EncodeToString(randomBytes(42))
-
 		secretBlock, _ := pem.Decode([]byte(m.ServiceProvider.Key))
 		state := jwt.New(jwt.GetSigningMethod("HS256"))
 		claims := state.Claims.(jwt.MapClaims)
@@ -140,7 +138,6 @@ func (m *Middleware) RequireAccount(handler http.Handler) http.Handler {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-
 		http.SetCookie(w, &http.Cookie{
 			Name:     fmt.Sprintf("saml_%s", relayState),
 			Value:    signedState,
@@ -149,7 +146,6 @@ func (m *Middleware) RequireAccount(handler http.Handler) http.Handler {
 			Path:     acsURL.Path,
 		})
 		redirectURL := req.Redirect(relayState)
-
 		w.Header().Add("Location", redirectURL.String())
 		w.WriteHeader(http.StatusFound)
 		return
@@ -208,6 +204,10 @@ func (m *Middleware) Authorize(w http.ResponseWriter, r *http.Request, assertion
 			return
 		}
 		claims := state.Claims.(jwt.MapClaims)
+		if claims == nil {
+			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			return
+		}
 		redirectURI = claims["uri"].(string)
 
 		// delete the cookie
@@ -218,6 +218,11 @@ func (m *Middleware) Authorize(w http.ResponseWriter, r *http.Request, assertion
 
 	token := jwt.New(jwt.GetSigningMethod("HS256"))
 	claims := token.Claims.(jwt.MapClaims)
+	if assertion.AttributeStatement == nil {
+		log.Print("\n\nNil assertions\n\n")
+		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		return
+	}
 	for _, attr := range assertion.AttributeStatement.Attributes {
 		valueStrings := []string{}
 		for _, v := range attr.Values {
