@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/rancher/go-rancher/client"
+	v2client "github.com/rancher/go-rancher/v2"
 	"github.com/rancher/rancher-auth-service/model"
 	"github.com/rancher/rancher-auth-service/providers"
 	"github.com/rancher/rancher-auth-service/util"
@@ -37,7 +38,7 @@ var (
 	publicKey          *rsa.PublicKey
 	authConfigInMemory model.AuthConfig
 	//RancherClient is the client configured to connect to Cattle
-	RancherClient                                                                *client.RancherClient
+	RancherClient                                                                *v2client.RancherClient
 	publicKeyFile, publicKeyFileContents, privateKeyFile, privateKeyFileContents string
 	selfSignedKeyFile, selfSignedCertFile                                        string
 	//IDPMetadataFile is the path to the metadata file of the Shibboleth IDP
@@ -124,8 +125,8 @@ func SetEnv(c *cli.Context) {
 	refreshReqChannel = &refChan
 }
 
-func newCattleClient(cattleURL string, cattleAccessKey string, cattleSecretKey string) (*client.RancherClient, error) {
-	apiClient, err := client.NewRancherClient(&client.ClientOpts{
+func newCattleClient(cattleURL string, cattleAccessKey string, cattleSecretKey string) (*v2client.RancherClient, error) {
+	apiClient, err := v2client.NewRancherClient(&v2client.ClientOpts{
 		Url:       cattleURL,
 		AccessKey: cattleAccessKey,
 		SecretKey: cattleSecretKey,
@@ -139,7 +140,7 @@ func newCattleClient(cattleURL string, cattleAccessKey string, cattleSecretKey s
 }
 
 func testCattleConnect() error {
-	opts := &client.ListOpts{}
+	opts := &v2client.ListOpts{}
 	_, err := RancherClient.ContainerEvent.List(opts)
 	return err
 }
@@ -181,7 +182,7 @@ func updateSettings(settings map[string]string) error {
 				log.Errorf("Error getting the setting %v , error: %v", key, err)
 				return err
 			}
-			setting, err = RancherClient.Setting.Update(setting, &client.Setting{
+			setting, err = RancherClient.Setting.Update(setting, &v2client.Setting{
 				Value: value,
 			})
 			if err != nil {

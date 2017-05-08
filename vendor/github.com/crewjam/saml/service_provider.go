@@ -67,7 +67,7 @@ func (sp *ServiceProvider) Metadata() *Metadata {
 		SPSSODescriptor: &SPSSODescriptor{
 			AuthnRequestsSigned:        false,
 			WantAssertionsSigned:       true,
-			ProtocolSupportEnumeration: "urn:oasis:names:tc:SAML:2.0:protocol",
+			ProtocolSupportEnumeration: "urn:oasis:names:tc:SAML:2.0:protocol urn:oasis:names:tc:SAML:1.1:protocol http://schemas.xmlsoap.org/ws/2003/07/secext",
 			KeyDescriptor: []KeyDescriptor{
 				{
 					Use: "signing",
@@ -93,6 +93,11 @@ func (sp *ServiceProvider) Metadata() *Metadata {
 				Location: sp.AcsURL,
 				Index:    1,
 			}},
+			NameIDPolicy: []NameIDPolicy{{
+				Format:      "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress",
+				AllowCreate: true,
+			}},
+			Destination: sp.AcsURL,
 		},
 	}
 }
@@ -146,7 +151,6 @@ func (sp *ServiceProvider) GetSSOBindingLocation(binding string) string {
 // signed by the IDP in PEM format, or nil if no such certificate is found.
 func (sp *ServiceProvider) getIDPSigningCert() []byte {
 	cert := ""
-
 	for _, keyDescriptor := range sp.IDPMetadata.IDPSSODescriptor.KeyDescriptor {
 		if keyDescriptor.Use == "signing" {
 			cert = keyDescriptor.KeyInfo.Certificate
@@ -168,7 +172,6 @@ func (sp *ServiceProvider) getIDPSigningCert() []byte {
 	if cert == "" {
 		return nil
 	}
-
 	// cleanup whitespace and re-encode a PEM
 	cert = regexp.MustCompile("\\s+").ReplaceAllString(cert, "")
 	certBytes, _ := base64.StdEncoding.DecodeString(cert)
@@ -186,16 +189,17 @@ func (sp *ServiceProvider) MakeAuthenticationRequest(idpURL string) (*AuthnReque
 		ID:                          fmt.Sprintf("id-%x", randomBytes(20)),
 		IssueInstant:                TimeNow(),
 		Version:                     "2.0",
+		ProtocolBinding:             HTTPPostBinding,
 		Issuer: Issuer{
 			Format: "urn:oasis:names:tc:SAML:2.0:nameid-format:entity",
 			Value:  sp.MetadataURL,
 		},
 		NameIDPolicy: NameIDPolicy{
+			XMLName: xml.Name{
+				Local: "NameIDPolicy",
+			},
 			AllowCreate: true,
-			// TODO(ross): figure out exactly policy we need
-			// urn:mace:shibboleth:1.0:nameIdentifier
-			// urn:oasis:names:tc:SAML:2.0:nameid-format:transient
-			Format: "urn:oasis:names:tc:SAML:2.0:nameid-format:transient",
+			Format:      "urn:oasis:names:tc:SAML:2.0:nameid-format:transient",
 		},
 	}
 	return &req, nil
@@ -214,6 +218,7 @@ func (sp *ServiceProvider) MakePostAuthenticationRequest(relayState string) ([]b
 
 // Post returns an HTML form suitable for using the HTTP-POST binding with the request
 func (req *AuthnRequest) Post(relayState string) []byte {
+
 	reqBuf, err := xml.Marshal(req)
 	if err != nil {
 		panic(err)
@@ -308,13 +313,13 @@ func (sp *ServiceProvider) ParseResponse(req *http.Request, possibleRequestIDs [
 		return nil, retErr
 	}
 	retErr.Response = string(rawResponseBuf)
-
 	// do some validation first before we decrypt
 	resp := Response{}
 	if err := xml.Unmarshal(rawResponseBuf, &resp); err != nil {
 		retErr.PrivateErr = fmt.Errorf("cannot unmarshal response: %s", err)
 		return nil, retErr
 	}
+
 	if resp.Destination != sp.AcsURL {
 		retErr.PrivateErr = fmt.Errorf("`Destination` does not match AcsURL (expected %q)", sp.AcsURL)
 		return nil, retErr
@@ -327,7 +332,7 @@ func (sp *ServiceProvider) ParseResponse(req *http.Request, possibleRequestIDs [
 		}
 	}
 	if !requestIDvalid {
-		retErr.PrivateErr = fmt.Errorf("`InResponseTo` does not match any of the possible request IDs (expected %v)", possibleRequestIDs)
+		retErr.PrivateErr = fmt.Errorf("`InResponseTo` %v does not match any of the possible request IDs (expected %v)", resp.InResponseTo, possibleRequestIDs)
 		return nil, retErr
 	}
 
