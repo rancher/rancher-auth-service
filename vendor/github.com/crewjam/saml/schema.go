@@ -21,7 +21,7 @@ type AuthnRequest struct {
 	Version                     string            `xml:",attr"`
 	Issuer                      Issuer            `xml:"urn:oasis:names:tc:SAML:2.0:assertion Issuer"`
 	Signature                   *xmlsec.Signature `xml:"http://www.w3.org/2000/09/xmldsig# Signature"`
-	NameIDPolicy                NameIDPolicy      `xml:"urn:oasis:names:tc:SAML:2.0:protocol NameIDPolicy"`
+	NameIDPolicy                NameIDPolicy      `xml:"NameIDPolicy"`
 }
 
 // Issuer represents the SAML object of the same name.
@@ -34,12 +34,11 @@ type Issuer struct {
 }
 
 // NameIDPolicy represents the SAML object of the same name.
-//
-// See http://docs.oasis-open.org/security/saml/v2.0/saml-core-2.0-os.pdf
+//PingIDP changes: mattbird library
 type NameIDPolicy struct {
-	XMLName     xml.Name `xml:"urn:oasis:names:tc:SAML:2.0:protocol NameIDPolicy"`
-	AllowCreate bool     `xml:",attr"`
-	Format      string   `xml:",chardata"`
+	XMLName     xml.Name
+	AllowCreate bool   `xml:"AllowCreate,attr"`
+	Format      string `xml:"Format,attr"`
 }
 
 // Response represents the SAML object of the same name.

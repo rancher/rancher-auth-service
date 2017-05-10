@@ -111,20 +111,19 @@ func (sp *SPClient) initializeSPClient(configToSet *model.ShibbolethConfig) erro
 
 func (sp *SPClient) getShibIdentities(samlData map[string][]string) ([]Account, error) {
 	//look for saml attributes set in the config
-
 	var shibAccts []Account
 
-	uid, ok := samlData[strings.ToLower(sp.config.UIDField)]
+	uid, ok := samlData[sp.config.UIDField]
 	if ok {
 		shibAcct := Account{}
 		shibAcct.UID = uid[0]
 
-		displayName, ok := samlData[strings.ToLower(sp.config.DisplayNameField)]
+		displayName, ok := samlData[sp.config.DisplayNameField]
 		if ok {
 			shibAcct.DisplayName = displayName[0]
 		}
 
-		userName, ok := samlData[strings.ToLower(sp.config.UserNameField)]
+		userName, ok := samlData[sp.config.UserNameField]
 		if ok {
 			shibAcct.UserName = userName[0]
 		}
@@ -132,7 +131,7 @@ func (sp *SPClient) getShibIdentities(samlData map[string][]string) ([]Account, 
 
 		shibAccts = append(shibAccts, shibAcct)
 
-		groups, ok := samlData[strings.ToLower(sp.config.GroupsField)]
+		groups, ok := samlData[sp.config.GroupsField]
 		if ok {
 			for _, group := range groups {
 				groupAcct := Account{}
