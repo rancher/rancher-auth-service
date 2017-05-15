@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/rancher/go-rancher/client"
+	"github.com/rancher/go-rancher/v2"
 	v2client "github.com/rancher/go-rancher/v2"
 	"github.com/rancher/rancher-auth-service/model"
 	"github.com/rancher/rancher-auth-service/providers"

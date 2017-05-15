@@ -5,6 +5,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
+	v2client "github.com/rancher/go-rancher/v2"
 	"github.com/rancher/rancher-auth-service/model"
 	"github.com/rancher/rancher-auth-service/server"
 	"net/http"
@@ -29,7 +30,6 @@ var router *mux.Router
 //NewRouter creates and configures a mux router
 func NewRouter() *mux.Router {
 	schemas = &client.Schemas{}
-
 	// ApiVersion
 	apiVersion := schemas.AddType("apiVersion", client.Resource{})
 	apiVersion.CollectionMethods = []string{}
@@ -38,7 +38,7 @@ func NewRouter() *mux.Router {
 	schemas.AddType("schema", client.Schema{})
 
 	// Identity
-	identity := schemas.AddType("identity", client.Identity{})
+	identity := schemas.AddType("identity", v2client.Identity{})
 	identity.CollectionMethods = []string{"GET"}
 	identity.ResourceMethods = []string{"GET"}
 	identity.PluralName = "identities"

@@ -3,7 +3,7 @@ package github
 import (
 	"fmt"
 	log "github.com/Sirupsen/logrus"
-	"github.com/rancher/go-rancher/client"
+	"github.com/rancher/go-rancher/v2"
 	"github.com/rancher/rancher-auth-service/model"
 	"net/http"
 )
@@ -127,7 +127,7 @@ func (g *GProvider) GetIdentities(accessToken string) ([]client.Identity, error)
 		userIdentity := client.Identity{Resource: client.Resource{
 			Type: "identity",
 		}}
-		userAcct.toIdentity(UserType, &userIdentity)
+		userAcct.toIdentity(UserType, &userIdentity, true)
 		identities = append(identities, userIdentity)
 	}
 	orgAccts, err := g.githubClient.getGithubOrgs(accessToken)
@@ -136,7 +136,7 @@ func (g *GProvider) GetIdentities(accessToken string) ([]client.Identity, error)
 			orgIdentity := client.Identity{Resource: client.Resource{
 				Type: "identity",
 			}}
-			orgAcct.toIdentity(OrgType, &orgIdentity)
+			orgAcct.toIdentity(OrgType, &orgIdentity, false)
 			identities = append(identities, orgIdentity)
 		}
 	}
@@ -146,11 +146,10 @@ func (g *GProvider) GetIdentities(accessToken string) ([]client.Identity, error)
 			teamIdentity := client.Identity{Resource: client.Resource{
 				Type: "identity",
 			}}
-			teamAcct.toIdentity(TeamType, &teamIdentity)
+			teamAcct.toIdentity(TeamType, &teamIdentity, false)
 			identities = append(identities, teamIdentity)
 		}
 	}
-
 	return identities, nil
 }
 
@@ -159,23 +158,25 @@ func (g *GProvider) GetIdentity(externalID string, externalIDType string, access
 	identity := client.Identity{Resource: client.Resource{
 		Type: "identity",
 	}}
+	userFlag := false
 
 	switch externalIDType {
 	case UserType:
+		userFlag = true
 		fallthrough
 	case OrgType:
 		githubAcct, err := g.githubClient.getUserOrgByID(externalID, accessToken)
 		if err != nil {
 			return identity, err
 		}
-		githubAcct.toIdentity(externalIDType, &identity)
+		githubAcct.toIdentity(externalIDType, &identity, userFlag)
 		return identity, nil
 	case TeamType:
 		githubAcct, err := g.githubClient.getTeamByID(externalID, accessToken)
 		if err != nil {
 			return identity, err
 		}
-		githubAcct.toIdentity(externalIDType, &identity)
+		githubAcct.toIdentity(externalIDType, &identity, false)
 		return identity, nil
 	default:
 		log.Debugf("Cannot get the github account due to invalid externalIDType %v", externalIDType)
@@ -192,7 +193,7 @@ func (g *GProvider) SearchIdentities(name string, exactMatch bool, accessToken s
 		userIdentity := client.Identity{Resource: client.Resource{
 			Type: "identity",
 		}}
-		userAcct.toIdentity(UserType, &userIdentity)
+		userAcct.toIdentity(UserType, &userIdentity, true)
 
 		identities = append(identities, userIdentity)
 	}
@@ -202,11 +203,10 @@ func (g *GProvider) SearchIdentities(name string, exactMatch bool, accessToken s
 		orgIdentity := client.Identity{Resource: client.Resource{
 			Type: "identity",
 		}}
-		orgAcct.toIdentity(OrgType, &orgIdentity)
+		orgAcct.toIdentity(OrgType, &orgIdentity, false)
 
 		identities = append(identities, orgIdentity)
 	}
-
 	return identities, nil
 }
 
