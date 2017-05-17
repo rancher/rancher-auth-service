@@ -1,7 +1,7 @@
 package model
 
 import (
-	"github.com/rancher/go-rancher/client"
+	"github.com/rancher/go-rancher/v2"
 )
 
 //Token structure defines all properties that can be present in a token

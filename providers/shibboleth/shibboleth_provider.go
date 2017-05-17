@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	log "github.com/Sirupsen/logrus"
-	"github.com/rancher/go-rancher/client"
+	"github.com/rancher/go-rancher/v2"
 	"github.com/rancher/rancher-auth-service/model"
 )
 
@@ -84,9 +84,9 @@ func (s *SProvider) GenerateToken(jsonInput map[string]string) (model.Token, err
 				Type: "identity",
 			}}
 			if acct.IsGroup {
-				acct.toIdentity(GroupType, &shibIdentity)
+				acct.toIdentity(GroupType, &shibIdentity, false)
 			} else {
-				acct.toIdentity(UserType, &shibIdentity)
+				acct.toIdentity(UserType, &shibIdentity, true)
 			}
 
 			identities = append(identities, shibIdentity)
@@ -143,6 +143,11 @@ func (s *SProvider) GetIdentity(externalID string, externalIDType string, access
 	identity.ExternalIdType = externalIDType
 	identity.Name = externalID
 	identity.Login = externalID
+	if externalIDType == UserType {
+		identity.User = true
+	} else {
+		identity.User = false
+	}
 	return identity, nil
 }
 

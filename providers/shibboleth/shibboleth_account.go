@@ -1,9 +1,7 @@
 package shibboleth
 
 import (
-	//"fmt"
-	"github.com/rancher/go-rancher/client"
-	//"strconv"
+	"github.com/rancher/go-rancher/v2"
 )
 
 //Account defines properties an account details shibboleth IDP provides. Account can also be created for a group entity.
@@ -14,7 +12,7 @@ type Account struct {
 	IsGroup     bool
 }
 
-func (a *Account) toIdentity(externalIDType string, identity *client.Identity) {
+func (a *Account) toIdentity(externalIDType string, identity *client.Identity, user bool) {
 	identity.ExternalId = a.UID
 	identity.Resource.Id = externalIDType + ":" + a.UID
 	identity.ExternalIdType = externalIDType
@@ -24,4 +22,5 @@ func (a *Account) toIdentity(externalIDType string, identity *client.Identity) {
 		identity.Name = a.UserName
 	}
 	identity.Login = a.UserName
+	identity.User = user
 }

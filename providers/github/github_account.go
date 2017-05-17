@@ -2,7 +2,7 @@ package github
 
 import (
 	"fmt"
-	"github.com/rancher/go-rancher/client"
+	"github.com/rancher/go-rancher/v2"
 	"strconv"
 )
 
@@ -15,7 +15,7 @@ type Account struct {
 	HTMLURL   string `json:"html_url,omitempty"`
 }
 
-func (a *Account) toIdentity(externalIDType string, identity *client.Identity) {
+func (a *Account) toIdentity(externalIDType string, identity *client.Identity, user bool) {
 	identity.ExternalId = strconv.Itoa(a.ID)
 	identity.Resource.Id = externalIDType + ":" + strconv.Itoa(a.ID)
 	identity.ExternalIdType = externalIDType
@@ -27,6 +27,7 @@ func (a *Account) toIdentity(externalIDType string, identity *client.Identity) {
 	identity.Login = a.Login
 	identity.ProfilePicture = a.AvatarURL
 	identity.ProfileUrl = a.HTMLURL
+	identity.User = user
 }
 
 //Team defines properties a team on github has

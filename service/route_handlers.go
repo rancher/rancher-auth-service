@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/rancher/go-rancher/api"
-	"github.com/rancher/go-rancher/client"
+	"github.com/rancher/go-rancher/v2"
 	"github.com/rancher/rancher-auth-service/model"
 	"github.com/rancher/rancher-auth-service/server"
 )
@@ -83,7 +83,6 @@ func GetIdentities(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			resp := client.IdentityCollection{}
 			resp.Data = identities
-
 			apiContext.Write(&resp)
 		} else {
 			//failed to get the user identities

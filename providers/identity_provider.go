@@ -1,7 +1,7 @@
 package providers
 
 import (
-	"github.com/rancher/go-rancher/client"
+	"github.com/rancher/go-rancher/v2"
 	"github.com/rancher/rancher-auth-service/model"
 	"github.com/rancher/rancher-auth-service/providers/github"
 	"github.com/rancher/rancher-auth-service/providers/shibboleth"
