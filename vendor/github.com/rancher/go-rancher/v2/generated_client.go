@@ -97,6 +97,7 @@ type RancherClient struct {
 	NetworkPolicyRuleWithin                  NetworkPolicyRuleWithinOperations
 	NfsConfig                                NfsConfigOperations
 	Openldapconfig                           OpenldapconfigOperations
+	PacketConfig                             PacketConfigOperations
 	Password                                 PasswordOperations
 	PhysicalHost                             PhysicalHostOperations
 	Port                                     PortOperations
@@ -266,6 +267,7 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.NetworkPolicyRuleWithin = newNetworkPolicyRuleWithinClient(client)
 	client.NfsConfig = newNfsConfigClient(client)
 	client.Openldapconfig = newOpenldapconfigClient(client)
+	client.PacketConfig = newPacketConfigClient(client)
 	client.Password = newPasswordClient(client)
 	client.PhysicalHost = newPhysicalHostClient(client)
 	client.Port = newPortClient(client)

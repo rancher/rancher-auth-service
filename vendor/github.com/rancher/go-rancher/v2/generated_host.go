@@ -73,6 +73,8 @@ type Host struct {
 
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`
 
+	PacketConfig *PacketConfig `json:"packetConfig,omitempty" yaml:"packet_config,omitempty"`
+
 	PhysicalHostId string `json:"physicalHostId,omitempty" yaml:"physical_host_id,omitempty"`
 
 	PublicEndpoints []PublicEndpoint `json:"publicEndpoints,omitempty" yaml:"public_endpoints,omitempty"`

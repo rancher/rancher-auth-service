@@ -15,8 +15,6 @@ type Identity struct {
 
 	Login string `json:"login,omitempty" yaml:"login,omitempty"`
 
-	Me bool `json:"me,omitempty" yaml:"me,omitempty"`
-
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`
 
 	ProfilePicture string `json:"profilePicture,omitempty" yaml:"profile_picture,omitempty"`
