@@ -3,7 +3,9 @@ package shibboleth
 import (
 	"encoding/json"
 	"fmt"
+
 	log "github.com/Sirupsen/logrus"
+	v1client "github.com/rancher/go-rancher/client"
 	"github.com/rancher/go-rancher/v2"
 	"github.com/rancher/rancher-auth-service/model"
 )
@@ -274,4 +276,12 @@ func (s *SProvider) GetIdentitySeparator() string {
 
 func (s *SProvider) TestLogin(testAuthConfig *model.TestAuthConfig) error {
 	return nil
+}
+
+func (s *SProvider) GetProviderConfigResource() interface{} {
+	return model.ShibbolethConfig{}
+}
+
+func (s *SProvider) CustomizeSchema(schema *v1client.Schema) *v1client.Schema {
+	return schema
 }

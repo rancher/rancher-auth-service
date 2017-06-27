@@ -2,10 +2,12 @@ package github
 
 import (
 	"fmt"
+	"net/http"
+
 	log "github.com/Sirupsen/logrus"
+	v1client "github.com/rancher/go-rancher/client"
 	"github.com/rancher/go-rancher/v2"
 	"github.com/rancher/rancher-auth-service/model"
-	"net/http"
 )
 
 //Constants for github
@@ -302,4 +304,12 @@ func (g *GProvider) GetIdentitySeparator() string {
 
 func (g *GProvider) TestLogin(testAuthConfig *model.TestAuthConfig) error {
 	return nil
+}
+
+func (g *GProvider) GetProviderConfigResource() interface{} {
+	return model.GithubConfig{}
+}
+
+func (g *GProvider) CustomizeSchema(schema *v1client.Schema) *v1client.Schema {
+	return schema
 }

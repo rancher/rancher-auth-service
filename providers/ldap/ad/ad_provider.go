@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	log "github.com/Sirupsen/logrus"
+	v1client "github.com/rancher/go-rancher/client"
 	"github.com/rancher/go-rancher/v2"
 	"github.com/rancher/rancher-auth-service/model"
 	"github.com/rancher/rancher-auth-service/providers/ldap"
@@ -127,21 +128,22 @@ func (a *ADProvider) AddProviderConfig(authConfig *model.AuthConfig, providerSet
 	ldapConfig.Domain = providerSettings[DomainSetting]
 	ldapConfig.GroupSearchDomain = providerSettings[GroupSearchDomainSetting]
 	ldapConfig.LoginDomain = providerSettings[LoginDomainSetting]
-	port, err := strconv.ParseInt(setDefault(providerSettings[PortSetting], "389"), 10, 64)
+	port, err := strconv.ParseInt(providerSettings[PortSetting], 10, 64)
 	if err != nil {
 		log.Errorf("Error in updating config %v", err)
 		ldapConfig.Port = 389
 	} else {
 		ldapConfig.Port = port
 	}
-	ldapConfig.UserSearchField = setDefault(providerSettings[UserSearchFieldSetting], "sAMAccountName")
+	ldapConfig.UserSearchField = providerSettings[UserSearchFieldSetting]
 	ldapConfig.ServiceAccountUsername = providerSettings[ServiceAccountUsernameSetting]
-	ldapConfig.GroupSearchField = setDefault(providerSettings[GroupSearchFieldSetting], "sAMAccountName")
-	ldapConfig.UserObjectClass = setDefault(providerSettings[UserObjectClassSetting], "person")
-	ldapConfig.UserNameField = setDefault(providerSettings[UserNameFieldSetting], "name")
-	ldapConfig.GroupObjectClass = setDefault(providerSettings[GroupObjectClassSetting], "group")
-	ldapConfig.UserLoginField = setDefault(providerSettings[UserLoginFieldSetting], "sAMAccountName")
-	userDisabledBitMask, err := strconv.ParseInt(setDefault(providerSettings[UserDisabledBitMaskSetting], "2"), 10, 64)
+	ldapConfig.GroupSearchField = providerSettings[GroupSearchFieldSetting]
+	ldapConfig.UserObjectClass = providerSettings[UserObjectClassSetting]
+	ldapConfig.GroupObjectClass = providerSettings[GroupObjectClassSetting]
+	ldapConfig.UserNameField = providerSettings[UserNameFieldSetting]
+	ldapConfig.GroupNameField = providerSettings[GroupNameFieldSetting]
+	ldapConfig.UserLoginField = providerSettings[UserLoginFieldSetting]
+	userDisabledBitMask, err := strconv.ParseInt(providerSettings[UserDisabledBitMaskSetting], 10, 64)
 	if err != nil {
 		log.Errorf("Error in updating config %v", err)
 		ldapConfig.UserDisabledBitMask = 2
@@ -150,31 +152,23 @@ func (a *ADProvider) AddProviderConfig(authConfig *model.AuthConfig, providerSet
 	}
 	ldapConfig.Server = providerSettings[ServerSetting]
 	ldapConfig.ServiceAccountPassword = providerSettings[ServiceAccountPasswordSetting]
-	ldapConfig.UserEnabledAttribute = setDefault(providerSettings[UserEnabledAttributeSetting], "userAccountControl")
-	ldapConfig.GroupNameField = setDefault(providerSettings[GroupNameFieldSetting], "name")
+	ldapConfig.UserEnabledAttribute = providerSettings[UserEnabledAttributeSetting]
 	tls, err := strconv.ParseBool(providerSettings[TLSSetting])
 	if err != nil {
 		log.Errorf("Error in updating config %v", err)
 	}
 	ldapConfig.TLS = tls
-	connectionTimeout, err := strconv.ParseInt(setDefault(providerSettings[TimeoutSetting], "10"), 10, 64)
+	connectionTimeout, err := strconv.ParseInt(providerSettings[TimeoutSetting], 10, 64)
 	if err != nil {
 		log.Errorf("Error in updating config %v", err)
 		ldapConfig.ConnectionTimeout = 5
 	} else {
 		ldapConfig.ConnectionTimeout = connectionTimeout
 	}
-	ldapConfig.GroupDNField = setDefault(providerSettings[GroupDnFieldSetting], "distinguishedName")
-	ldapConfig.GroupMemberUserAttribute = setDefault(providerSettings[GroupMemberUserAttributeSetting], "distinguishedName")
+	ldapConfig.GroupDNField = providerSettings[GroupDnFieldSetting]
+	ldapConfig.GroupMemberUserAttribute = providerSettings[GroupMemberUserAttributeSetting]
 
 	authConfig.LdapConfig = ldapConfig
-}
-
-func setDefault(setting string, defaultVal string) string {
-	if setting == "" {
-		setting = defaultVal
-	}
-	return setting
 }
 
 //GetProviderSettingList returns the provider specific db setting list
@@ -268,6 +262,66 @@ func (a *ADProvider) GetRedirectURL() string {
 
 func (a *ADProvider) TestLogin(testAuthConfig *model.TestAuthConfig) error {
 	return a.LdapClient.TestLogin(testAuthConfig)
+}
+
+func (a *ADProvider) GetProviderConfigResource() interface{} {
+	return model.LdapConfig{}
+}
+
+func (a *ADProvider) CustomizeSchema(schema *v1client.Schema) *v1client.Schema {
+	port := schema.ResourceFields["port"]
+	port.Default = 389
+	schema.ResourceFields["port"] = port
+
+	userSearchField := schema.ResourceFields["userSearchField"]
+	userSearchField.Default = "sAMAccountName"
+	schema.ResourceFields["userSearchField"] = userSearchField
+
+	groupSearchField := schema.ResourceFields["groupSearchField"]
+	groupSearchField.Default = "sAMAccountName"
+	schema.ResourceFields["groupSearchField"] = groupSearchField
+
+	userObjectClass := schema.ResourceFields["userObjectClass"]
+	userObjectClass.Default = "person"
+	schema.ResourceFields["userObjectClass"] = userObjectClass
+
+	groupObjectClass := schema.ResourceFields["groupObjectClass"]
+	groupObjectClass.Default = "group"
+	schema.ResourceFields["groupObjectClass"] = groupObjectClass
+
+	userNameField := schema.ResourceFields["userNameField"]
+	userNameField.Default = "name"
+	schema.ResourceFields["userNameField"] = userNameField
+
+	groupNameField := schema.ResourceFields["groupNameField"]
+	groupNameField.Default = "name"
+	schema.ResourceFields["groupNameField"] = groupNameField
+
+	userLoginField := schema.ResourceFields["userLoginField"]
+	userLoginField.Default = "sAMAccountName"
+	schema.ResourceFields["userLoginField"] = userLoginField
+
+	userDisabledBitMask := schema.ResourceFields["userDisabledBitMask"]
+	userDisabledBitMask.Default = 2
+	schema.ResourceFields["userDisabledBitMask"] = userDisabledBitMask
+
+	userEnabledAttribute := schema.ResourceFields["userEnabledAttribute"]
+	userEnabledAttribute.Default = "userAccountControl"
+	schema.ResourceFields["userEnabledAttribute"] = userEnabledAttribute
+
+	connectionTimeout := schema.ResourceFields["connectionTimeout"]
+	connectionTimeout.Default = 5
+	schema.ResourceFields["connectionTimeout"] = connectionTimeout
+
+	groupDNField := schema.ResourceFields["groupDNField"]
+	groupDNField.Default = "distinguishedName"
+	schema.ResourceFields["groupDNField"] = groupDNField
+
+	groupMemberUserAttribute := schema.ResourceFields["groupMemberUserAttribute"]
+	groupMemberUserAttribute.Default = "distinguishedName"
+	schema.ResourceFields["groupMemberUserAttribute"] = groupMemberUserAttribute
+
+	return schema
 }
 
 func getAllowedIDString(allowedIdentities []client.Identity, separator string) string {
