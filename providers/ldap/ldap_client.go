@@ -2,7 +2,11 @@ package ldap
 
 import (
 	"bytes"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
+	"io/ioutil"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -71,13 +75,46 @@ func (l *LClient) InitializeSearchConfig() *SearchConfig {
 	}
 }
 
+// From src/crypto/x509/root_linux.go
+var certFiles = []string{
+	"/etc/ssl/certs/ca-certificates.crt",                // Debian/Ubuntu/Gentoo etc.
+	"/etc/pki/tls/certs/ca-bundle.crt",                  // Fedora/RHEL 6
+	"/etc/ssl/ca-bundle.pem",                            // OpenSUSE
+	"/etc/pki/tls/cacert.pem",                           // OpenELEC
+	"/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem", // CentOS/RHEL 7
+}
+
 func (l *LClient) newConn() (*ldap.Conn, error) {
 	log.Debug("Now creating Ldap connection")
 	var lConn *ldap.Conn
 	var err error
+	var tlsConfig *tls.Config
 	searchConfig := l.SearchConfig
 	if l.Config.TLS {
-		lConn, err = ldap.DialTLS("tcp", fmt.Sprintf("%s:%d", searchConfig.Server, searchConfig.Port), nil)
+		pool := x509.NewCertPool()
+		certFound := false
+		for _, certFile := range certFiles {
+			if _, err = os.Stat(certFile); os.IsNotExist(err) {
+				log.Warning("CA cert file %s is not present", certFile)
+				continue
+			}
+			caCert, err := ioutil.ReadFile(certFile)
+			if err != nil {
+				return nil, fmt.Errorf("cannot read CA cert file '%s'; err= %v", certFile, err)
+			}
+
+			if ok := pool.AppendCertsFromPEM(caCert); !ok {
+				return nil, fmt.Errorf("cannot add CA cert file '%s'", certFile)
+			}
+			log.Infof("loaded CA cert file %s", certFile)
+			certFound = true
+		}
+		if certFound {
+			tlsConfig = &tls.Config{RootCAs: pool}
+		} else {
+			tlsConfig = &tls.Config{InsecureSkipVerify: true}
+		}
+		lConn, err = ldap.DialTLS("tcp", fmt.Sprintf("%s:%d", searchConfig.Server, searchConfig.Port), tlsConfig)
 		if err != nil {
 			return nil, fmt.Errorf("Error %v creating ssl connection", err)
 		}
