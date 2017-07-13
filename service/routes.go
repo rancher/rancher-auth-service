@@ -7,6 +7,7 @@ import (
 	"github.com/rancher/go-rancher/client"
 	v2client "github.com/rancher/go-rancher/v2"
 	"github.com/rancher/rancher-auth-service/model"
+	"github.com/rancher/rancher-auth-service/providers"
 	"github.com/rancher/rancher-auth-service/server"
 	"net/http"
 	"strconv"
@@ -29,41 +30,7 @@ var router *mux.Router
 
 //NewRouter creates and configures a mux router
 func NewRouter() *mux.Router {
-	schemas = &client.Schemas{}
-	// ApiVersion
-	apiVersion := schemas.AddType("apiVersion", client.Resource{})
-	apiVersion.CollectionMethods = []string{}
-
-	// Schema
-	schemas.AddType("schema", client.Schema{})
-
-	// Identity
-	identity := schemas.AddType("identity", v2client.Identity{})
-	identity.CollectionMethods = []string{"GET"}
-	identity.ResourceMethods = []string{"GET"}
-	identity.PluralName = "identities"
-
-	// GithubConfig
-	githubconfig := schemas.AddType("githubconfig", model.GithubConfig{})
-	githubconfig.CollectionMethods = []string{}
-
-	// ShibbolethConfig
-	shibbolethconfig := schemas.AddType("shibbolethconfig", model.ShibbolethConfig{})
-	shibbolethconfig.CollectionMethods = []string{}
-
-	// AuthConfig
-	authconfig := schemas.AddType("config", model.AuthConfig{})
-	authconfig.CollectionMethods = []string{"GET", "POST"}
-	authconfig.ResourceMethods = []string{"GET", "POST"}
-	authconfig.PluralName = "configs"
-
-	//Token
-	token := schemas.AddType("token", model.Token{})
-	token.CollectionMethods = []string{}
-
-	// Error
-	err := schemas.AddType("error", model.AuthServiceError{})
-	err.CollectionMethods = []string{}
+	schemas = getSchemas()
 
 	// API framework routes
 	router = mux.NewRouter().StrictSlash(true)
@@ -89,6 +56,8 @@ func NewRouter() *mux.Router {
 	router.Methods("POST").Path("/v1-auth/saml/acs").Name("SamlACS")
 	router.Methods("GET").Path("/v1-auth/saml/metadata").Name("SamlMetadata")
 
+	router.Methods("POST").Path("/v1-auth/testLogin").Handler(api.ApiHandler(schemas, http.HandlerFunc(TestLogin)))
+
 	if server.SamlServiceProvider != nil {
 		log.Debugf("Adding saml routes to router")
 		addRouteHandler(server.SamlServiceProvider.RequireAccount(http.HandlerFunc(HandleSamlPost)), "SamlLogin")
@@ -97,6 +66,46 @@ func NewRouter() *mux.Router {
 	}
 
 	return router
+}
+
+func getSchemas() *client.Schemas {
+	schemas = &client.Schemas{}
+	// ApiVersion
+	apiVersion := schemas.AddType("apiVersion", client.Resource{})
+	apiVersion.CollectionMethods = []string{}
+
+	// Schema
+	schemas.AddType("schema", client.Schema{})
+
+	// Identity
+	identity := schemas.AddType("identity", v2client.Identity{})
+	identity.CollectionMethods = []string{"GET"}
+	identity.ResourceMethods = []string{"GET"}
+	identity.PluralName = "identities"
+
+	// AuthConfig
+	authconfig := schemas.AddType("config", model.AuthConfig{})
+	authconfig.CollectionMethods = []string{"GET", "POST"}
+	authconfig.ResourceMethods = []string{"GET", "POST"}
+	authconfig.PluralName = "configs"
+
+	//Token
+	token := schemas.AddType("token", model.Token{})
+	token.CollectionMethods = []string{}
+
+	// Error
+	err := schemas.AddType("error", model.AuthServiceError{})
+	err.CollectionMethods = []string{}
+
+	// For providers
+	for _, value := range providers.Providers {
+		p := providers.GetProvider(value)
+		providerConfig := schemas.AddType(value, p.GetProviderConfigResource())
+		providerConfig.CollectionMethods = []string{}
+		providerConfig = p.CustomizeSchema(providerConfig)
+	}
+
+	return schemas
 }
 
 func addRouteHandler(handler http.Handler, name string) {

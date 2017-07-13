@@ -11,4 +11,10 @@ type AuthConfig struct {
 	AllowedIdentities []client.Identity `json:"allowedIdentities"`
 	GithubConfig      GithubConfig      `json:"githubConfig"`
 	ShibbolethConfig  ShibbolethConfig  `json:"shibbolethConfig"`
+	LdapConfig        LdapConfig        `json:"ldapConfig"`
+}
+
+type TestAuthConfig struct {
+	AuthConfig AuthConfig `json:"authConfig"`
+	Code       string     `json:"code"`
 }

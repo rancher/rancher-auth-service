@@ -54,7 +54,6 @@ type ProcessInstanceOperations interface {
 	Update(existing *ProcessInstance, updates interface{}) (*ProcessInstance, error)
 	ById(id string) (*ProcessInstance, error)
 	Delete(container *ProcessInstance) error
-
 	ActionReplay(*ProcessInstance) (*ProcessInstance, error)
 }
 

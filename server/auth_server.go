@@ -14,7 +14,6 @@ import (
 	"strings"
 
 	"github.com/rancher/go-rancher/v2"
-	v2client "github.com/rancher/go-rancher/v2"
 	"github.com/rancher/rancher-auth-service/model"
 	"github.com/rancher/rancher-auth-service/providers"
 	"github.com/rancher/rancher-auth-service/util"
@@ -38,7 +37,7 @@ var (
 	publicKey          *rsa.PublicKey
 	authConfigInMemory model.AuthConfig
 	//RancherClient is the client configured to connect to Cattle
-	RancherClient                                                                *v2client.RancherClient
+	RancherClient                                                                *client.RancherClient
 	publicKeyFile, publicKeyFileContents, privateKeyFile, privateKeyFileContents string
 	selfSignedKeyFile, selfSignedCertFile                                        string
 	//IDPMetadataFile is the path to the metadata file of the Shibboleth IDP
@@ -125,8 +124,8 @@ func SetEnv(c *cli.Context) {
 	refreshReqChannel = &refChan
 }
 
-func newCattleClient(cattleURL string, cattleAccessKey string, cattleSecretKey string) (*v2client.RancherClient, error) {
-	apiClient, err := v2client.NewRancherClient(&v2client.ClientOpts{
+func newCattleClient(cattleURL string, cattleAccessKey string, cattleSecretKey string) (*client.RancherClient, error) {
+	apiClient, err := client.NewRancherClient(&client.ClientOpts{
 		Url:       cattleURL,
 		AccessKey: cattleAccessKey,
 		SecretKey: cattleSecretKey,
@@ -140,7 +139,7 @@ func newCattleClient(cattleURL string, cattleAccessKey string, cattleSecretKey s
 }
 
 func testCattleConnect() error {
-	opts := &v2client.ListOpts{}
+	opts := &client.ListOpts{}
 	_, err := RancherClient.ContainerEvent.List(opts)
 	return err
 }
@@ -175,14 +174,22 @@ func readSettings(settings []string) (map[string]string, error) {
 
 func updateSettings(settings map[string]string) error {
 	for key, value := range settings {
-		if value != "" {
-			log.Debugf("Update setting key:%v value: %v", key, value)
-			setting, err := RancherClient.Setting.ById(key)
+		log.Debugf("Update setting key:%v value: %v", key, value)
+		setting, err := RancherClient.Setting.ById(key)
+		if err != nil {
+			log.Errorf("Error getting the setting %v , error: %v", key, err)
+			return err
+		}
+		if setting.InDb && value == "" {
+			err = RancherClient.Setting.Delete(setting)
 			if err != nil {
-				log.Errorf("Error getting the setting %v , error: %v", key, err)
+				log.Errorf("Error deleting the setting %v, error: %v", key, err)
 				return err
 			}
-			setting, err = RancherClient.Setting.Update(setting, &v2client.Setting{
+			continue
+		}
+		if value != "" {
+			setting, err = RancherClient.Setting.Update(setting, &client.Setting{
 				Value: value,
 			})
 			if err != nil {
@@ -373,7 +380,6 @@ func GetConfig(accessToken string, listOnly bool) (model.AuthConfig, error) {
 		log.Errorf("GetConfig: Error reading DB settings %v", err)
 		return config, err
 	}
-
 	config.AccessMode = dbSettings[accessModeSetting]
 
 	enabled, err := strconv.ParseBool(dbSettings[securitySetting])
@@ -405,7 +411,6 @@ func GetConfig(accessToken string, listOnly bool) (model.AuthConfig, error) {
 	} else {
 		config.Provider = dbSettings[providerSetting]
 	}
-
 	return config, nil
 }
 
@@ -494,7 +499,6 @@ func RefreshToken(json map[string]string) (model.Token, error) {
 			return model.Token{}, err
 		}
 		token.JwtToken = jwt
-
 		return token, nil
 	}
 	return model.Token{}, fmt.Errorf("No auth provider configured")
@@ -657,4 +661,21 @@ func IsSamlJWTValid(value string) (bool, map[string][]string) {
 		}
 	}
 	return false, samlData
+}
+
+func TestLogin(testAuthConfig model.TestAuthConfig) error {
+	authConfig := testAuthConfig.AuthConfig
+	newProvider, err := initProviderWithConfig(&authConfig)
+	if err != nil {
+		log.Errorf("GetProvider: Error initializing the provider %v", err)
+		return err
+	}
+
+	log.Infof("newProvider %v", newProvider.GetName())
+	err = newProvider.TestLogin(&testAuthConfig)
+	if err != nil {
+		log.Errorf("GetProvider: Error in login %v", err)
+		return err
+	}
+	return nil
 }

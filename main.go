@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	log "github.com/Sirupsen/logrus"
+	"github.com/rancher/rancher-auth-service/providers"
 	"github.com/rancher/rancher-auth-service/server"
 	"github.com/rancher/rancher-auth-service/service"
 	"github.com/urfave/cli"
@@ -112,6 +113,7 @@ func main() {
 func StartService(c *cli.Context) {
 
 	server.SetEnv(c)
+	providers.RegisterProviders()
 
 	if c.GlobalBool("debug") {
 		log.SetLevel(log.DebugLevel)

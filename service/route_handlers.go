@@ -38,6 +38,7 @@ func CreateToken(w http.ResponseWriter, r *http.Request) {
 
 	securityCode := jsonInput["code"]
 	accessToken := jsonInput["accessToken"]
+	externalID := jsonInput["externalId"]
 
 	if securityCode != "" {
 		log.Debugf("CreateToken called with securityCode %s", securityCode)
@@ -49,7 +50,7 @@ func CreateToken(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		api.GetApiContext(r).Write(&token)
-	} else if accessToken != "" {
+	} else if accessToken != "" || externalID != "" {
 		log.Debugf("RefreshToken called with accessToken %s", accessToken)
 		//getToken
 		token, err := server.RefreshToken(jsonInput)
@@ -131,6 +132,7 @@ func SearchIdentities(w http.ResponseWriter, r *http.Request) {
 			}
 		} else if name != "" {
 			log.Debugf("SearchIdentities by name: %v", name)
+			//Must call ldap SearchIdentities with exactMatch=true
 			identities, err := server.SearchIdentities(name, true, accessToken)
 			log.Debugf("Found identities  %v", identities)
 			if err == nil {
@@ -398,5 +400,35 @@ func DoSamlLogout(w http.ResponseWriter, r *http.Request) {
 		log.Info("No Logout URL - Saml/Shibboleth IDPMetadata not found")
 	} else {
 		log.Info("No Logout URL - Saml/Shibboleth provider is not configured")
+	}
+}
+
+// TestLogin is a test API to check login with code before saving settings to db
+func TestLogin(w http.ResponseWriter, r *http.Request) {
+	bytes, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		log.Errorf("TestLogin failed with error: %v", err)
+		ReturnHTTPError(w, r, http.StatusBadRequest, "Bad Request, Please check the request content")
+		return
+	}
+	var testAuthConfig model.TestAuthConfig
+
+	err = json.Unmarshal(bytes, &testAuthConfig)
+	if err != nil {
+		log.Errorf("TestLogin unmarshal failed with error: %v", err)
+		ReturnHTTPError(w, r, http.StatusBadRequest, "Bad Request, Please check the request content")
+		return
+	}
+
+	if testAuthConfig.AuthConfig.Provider == "" {
+		log.Errorf("UpdateConfig: Provider is a required field")
+		ReturnHTTPError(w, r, http.StatusBadRequest, "Bad request, Provider is a required field")
+		return
+	}
+
+	err = server.TestLogin(testAuthConfig)
+	if err != nil {
+		log.Errorf("TestLogin GetProvider failed with error: %v", err)
+		ReturnHTTPError(w, r, http.StatusUnauthorized, "Unauthorized, invalid credentials")
 	}
 }
