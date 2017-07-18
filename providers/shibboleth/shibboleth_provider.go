@@ -32,11 +32,11 @@ func init() {
 }
 
 //InitializeProvider returns a new instance of the provider
-func InitializeProvider() *SProvider {
+func InitializeProvider() (*SProvider, error) {
 	shibClient := &SPClient{}
 	shibProvider := &SProvider{}
 	shibProvider.shibClient = shibClient
-	return shibProvider
+	return shibProvider, nil
 }
 
 //SProvider implements an IdentityProvider for shibboleth

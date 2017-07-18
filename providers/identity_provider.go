@@ -40,7 +40,7 @@ type IdentityProvider interface {
 }
 
 //GetProvider returns an instance of an identyityProvider by name
-func GetProvider(name string) IdentityProvider {
+func GetProvider(name string) (IdentityProvider, error) {
 	switch name {
 	case "githubconfig":
 		return github.InitializeProvider()
@@ -49,7 +49,7 @@ func GetProvider(name string) IdentityProvider {
 	case "ldapconfig":
 		return ad.InitializeProvider()
 	default:
-		return nil
+		return nil, nil
 	}
 }
 

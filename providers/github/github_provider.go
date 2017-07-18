@@ -30,7 +30,7 @@ func init() {
 }
 
 //InitializeProvider returns a new instance of the provider
-func InitializeProvider() *GProvider {
+func InitializeProvider() (*GProvider, error) {
 	client := &http.Client{}
 	githubClient := &GClient{}
 	githubClient.httpClient = client
@@ -38,7 +38,7 @@ func InitializeProvider() *GProvider {
 	githubProvider := &GProvider{}
 	githubProvider.githubClient = githubClient
 
-	return githubProvider
+	return githubProvider, nil
 }
 
 //GProvider implements an IdentityProvider for github

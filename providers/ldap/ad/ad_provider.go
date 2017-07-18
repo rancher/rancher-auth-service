@@ -1,10 +1,12 @@
 package ldap
 
 import (
+	"crypto/x509"
 	"strconv"
 	"strings"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/pkg/errors"
 	v1client "github.com/rancher/go-rancher/client"
 	"github.com/rancher/go-rancher/v2"
 	"github.com/rancher/rancher-auth-service/model"
@@ -59,14 +61,19 @@ var adConstantsConfig = &ldap.ConstantsConfig{
 	LdapJwt:              LdapJwt,
 }
 
-func InitializeProvider() *ADProvider {
+func InitializeProvider() (*ADProvider, error) {
 	ldapClient := &ldap.LClient{}
 	ldapProvider := &ADProvider{}
 
+	pool, err := x509.SystemCertPool()
+	if err != nil {
+		return nil, errors.Wrap(err, "Error in loading certs")
+	}
+	adConstantsConfig.CAPool = pool
 	ldapClient.ConstantsConfig = adConstantsConfig
 	ldapProvider.LdapClient = ldapClient
 
-	return ldapProvider
+	return ldapProvider, nil
 }
 
 func (a *ADProvider) GetName() string {
