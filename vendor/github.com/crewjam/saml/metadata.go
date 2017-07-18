@@ -80,8 +80,6 @@ type SPSSODescriptor struct {
 	SingleLogoutService        []Endpoint        `xml:"SingleLogoutService"`
 	ManageNameIDService        []Endpoint
 	NameIDFormat               []string          `xml:"NameIDFormat"`
-	NameIDPolicy               []NameIDPolicy    `xml:"NameIDPolicy"`
-	Destination                string            `sml:"Destination"`
 	AssertionConsumerService   []IndexedEndpoint `xml:"AssertionConsumerService"`
 	AttributeConsumingService  []interface{}
 }
