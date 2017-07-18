@@ -195,13 +195,15 @@ func (a *ADProvider) GetProviderSettingList(listOnly bool) []string {
 	settings = append(settings, UserLoginFieldSetting)
 	settings = append(settings, UserDisabledBitMaskSetting)
 	settings = append(settings, ServerSetting)
-	settings = append(settings, ServiceAccountPasswordSetting)
 	settings = append(settings, UserEnabledAttributeSetting)
 	settings = append(settings, GroupNameFieldSetting)
 	settings = append(settings, TLSSetting)
 	settings = append(settings, TimeoutSetting)
 	settings = append(settings, GroupDnFieldSetting)
 	settings = append(settings, GroupMemberUserAttributeSetting)
+	if !listOnly {
+		settings = append(settings, ServiceAccountPasswordSetting)
+	}
 
 	return settings
 }
