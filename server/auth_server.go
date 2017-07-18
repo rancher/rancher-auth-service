@@ -145,11 +145,14 @@ func testCattleConnect() error {
 }
 
 func initProviderWithConfig(authConfig *model.AuthConfig) (providers.IdentityProvider, error) {
-	newProvider := providers.GetProvider(authConfig.Provider)
+	newProvider, err := providers.GetProvider(authConfig.Provider)
+	if err != nil {
+		return nil, err
+	}
 	if newProvider == nil {
 		return nil, fmt.Errorf("Could not get the %s auth provider", authConfig.Provider)
 	}
-	err := newProvider.LoadConfig(authConfig)
+	err = newProvider.LoadConfig(authConfig)
 	if err != nil {
 		log.Debugf("Error Loading the provider config %v", err)
 		return nil, err
@@ -325,7 +328,10 @@ func UpgradeSettings() error {
 	if providerNameInDb != "" {
 		if providers.IsProviderSupported(providerNameInDb) {
 			//upgrade to new settings and set external provider as true
-			newProvider := providers.GetProvider(providerNameInDb)
+			newProvider, err := providers.GetProvider(providerNameInDb)
+			if err != nil {
+				return err
+			}
 			if newProvider == nil {
 				return fmt.Errorf("UpgradeSettings: Cannot upgrade the setup, could not get the %s auth provider", providerNameInDb)
 			}
@@ -395,7 +401,10 @@ func GetConfig(accessToken string, listOnly bool) (model.AuthConfig, error) {
 		if providers.IsProviderSupported(providerNameInDb) {
 			config.Provider = providerNameInDb
 			//add the provider specific config
-			newProvider := providers.GetProvider(config.Provider)
+			newProvider, err := providers.GetProvider(config.Provider)
+			if err != nil {
+				return config, err
+			}
 			if newProvider == nil {
 				log.Errorf("GetConfig: Could not get the %s auth provider", config.Provider)
 				return config, nil

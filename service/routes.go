@@ -56,7 +56,7 @@ func NewRouter() *mux.Router {
 	router.Methods("POST").Path("/v1-auth/saml/acs").Name("SamlACS")
 	router.Methods("GET").Path("/v1-auth/saml/metadata").Name("SamlMetadata")
 
-	router.Methods("POST").Path("/v1-auth/testLogin").Handler(api.ApiHandler(schemas, http.HandlerFunc(TestLogin)))
+	router.Methods("POST").Path("/v1-auth/testlogin").Handler(api.ApiHandler(schemas, http.HandlerFunc(TestLogin)))
 
 	if server.SamlServiceProvider != nil {
 		log.Debugf("Adding saml routes to router")
@@ -89,6 +89,14 @@ func getSchemas() *client.Schemas {
 	authconfig.ResourceMethods = []string{"GET", "POST"}
 	authconfig.PluralName = "configs"
 
+	// TestAuthConfig
+	testAuthconfig := schemas.AddType("testAuthConfig", model.TestAuthConfig{})
+	testAuthconfig.CollectionMethods = []string{"POST"}
+	a := testAuthconfig.ResourceFields["authConfig"]
+	a.Type = "authConfig"
+	testAuthconfig.ResourceFields["authConfig"] = a
+	testAuthconfig.PluralName = "testAuthConfigs"
+
 	//Token
 	token := schemas.AddType("token", model.Token{})
 	token.CollectionMethods = []string{}
@@ -99,7 +107,10 @@ func getSchemas() *client.Schemas {
 
 	// For providers
 	for _, value := range providers.Providers {
-		p := providers.GetProvider(value)
+		p, err := providers.GetProvider(value)
+		if err != nil {
+			continue
+		}
 		providerConfig := schemas.AddType(value, p.GetProviderConfigResource())
 		providerConfig.CollectionMethods = []string{}
 		providerConfig = p.CustomizeSchema(providerConfig)
