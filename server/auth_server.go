@@ -29,6 +29,7 @@ const (
 	securitySetting          = "api.security.enabled"
 	apiHostSetting           = "api.host"
 	identitySeparatorSetting = "api.auth.external.provider.identity.separator"
+	authServiceLogSetting    = "auth.service.log.level"
 )
 
 var (
@@ -380,12 +381,33 @@ func GetConfig(accessToken string, listOnly bool) (model.AuthConfig, error) {
 	settings = append(settings, securitySetting)
 	settings = append(settings, providerSetting)
 	settings = append(settings, providerNameSetting)
+	settings = append(settings, authServiceLogSetting)
 
 	dbSettings, err := readSettings(settings)
 	if err != nil {
 		log.Errorf("GetConfig: Error reading DB settings %v", err)
 		return config, err
 	}
+
+	if dbSettings[authServiceLogSetting] != "" {
+		switch strings.ToLower(dbSettings[authServiceLogSetting]) {
+		case "trace":
+			log.SetLevel(log.DebugLevel)
+		case "debug":
+			log.SetLevel(log.DebugLevel)
+		case "info":
+			log.SetLevel(log.InfoLevel)
+		case "warn":
+			log.SetLevel(log.WarnLevel)
+		case "error":
+			log.SetLevel(log.ErrorLevel)
+		case "fatal":
+			log.SetLevel(log.FatalLevel)
+		case "panic":
+			log.SetLevel(log.PanicLevel)
+		}
+	}
+
 	config.AccessMode = dbSettings[accessModeSetting]
 
 	enabled, err := strconv.ParseBool(dbSettings[securitySetting])
