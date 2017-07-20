@@ -301,7 +301,7 @@ func (l *LClient) GetIdentity(distinguishedName string, scope string) (client.Id
 	}
 
 	filter := "(" + c.ObjectClassAttribute + "=*)"
-	log.Debugf("Filter: %s", filter)
+	log.Debugf("Query for GetIdentity(%s): %s", distinguishedName, filter)
 	lConn, err := l.newConn()
 	if err != nil {
 		return nilIdentity, fmt.Errorf("Error %v creating connection", err)

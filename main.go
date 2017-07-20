@@ -132,14 +132,14 @@ func StartService(c *cli.Context) {
 
 	log.Info("Starting Rancher Auth service")
 
-	err := server.Reload()
+	err := server.UpgradeCase()
 	if err != nil {
-		log.Fatalf("Failed to reload the auth provider from db on start: %v", err)
+		log.Fatalf("Failed on upgrade case: %v", err)
 	}
 
-	err = server.UpgradeCase()
+	err = server.Reload()
 	if err != nil {
-		log.Fatalf("Failed on upgrade case")
+		log.Fatalf("Failed to reload the auth provider from db on start: %v", err)
 	}
 
 	router := service.NewRouter()
