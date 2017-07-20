@@ -1,22 +1,26 @@
 package server
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	log "github.com/Sirupsen/logrus"
-	"github.com/crewjam/saml/samlsp"
-	"github.com/dgrijalva/jwt-go"
-	"github.com/urfave/cli"
+	"io/ioutil"
 	"net/url"
 	"strconv"
 	"strings"
 
+	log "github.com/Sirupsen/logrus"
+	"github.com/crewjam/saml/samlsp"
+	"github.com/dgrijalva/jwt-go"
 	"github.com/rancher/go-rancher/v2"
 	"github.com/rancher/rancher-auth-service/model"
 	"github.com/rancher/rancher-auth-service/providers"
 	"github.com/rancher/rancher-auth-service/util"
+	"github.com/urfave/cli"
 )
 
 const (
@@ -46,7 +50,14 @@ var (
 	//SamlServiceProvider is the handle to the SamlServiceProvider configured by the router
 	SamlServiceProvider *samlsp.Middleware
 	refreshReqChannel   *chan int
+	authConfigFile      string
+	key                 []byte
 )
+
+type AESSecret struct {
+	Nonce      []byte
+	CipherText []byte
+}
 
 //SetEnv sets the parameters necessary
 func SetEnv(c *cli.Context) {
@@ -103,6 +114,7 @@ func SetEnv(c *cli.Context) {
 	selfSignedKeyFile = c.GlobalString("self-signed-key-file")
 	selfSignedCertFile = c.GlobalString("self-signed-cert-file")
 	IDPMetadataFile = c.GlobalString("idp-metadata-file")
+	authConfigFile = c.GlobalString("auth-config-file")
 
 	//configure cattle client
 	var err error
@@ -119,6 +131,11 @@ func SetEnv(c *cli.Context) {
 	err = UpgradeSettings()
 	if err != nil {
 		log.Fatalf("Failed to upgrade the existing auth settings in db to new: %v", err)
+	}
+
+	key, err = readPrivateKey()
+	if err != nil {
+		log.Fatalf("Failed to read key with error: %v", err)
 	}
 
 	refChan := make(chan int, 1)
@@ -161,7 +178,131 @@ func initProviderWithConfig(authConfig *model.AuthConfig) (providers.IdentityPro
 	return newProvider, nil
 }
 
-func readSettings(settings []string) (map[string]string, error) {
+// This code is adapted from rancher secrets-api https://github.com/rancher/secrets-api/blob/master/pkg/aesutils/key.go#L36
+func readPrivateKey() ([]byte, error) {
+	keyData, err := ioutil.ReadFile(authConfigFile)
+	if err != nil {
+		log.Errorf("Returning error, authConfigFile %s not found", authConfigFile)
+		return []byte{}, err
+	}
+
+	log.Debug("Key: %s", string(keyData))
+	return keyData, nil
+}
+
+// InitBlock adapted from secrets-api https://github.com/rancher/secrets-api/blob/master/pkg/aesutils/aesgcm.go#L34
+func initBlock() (cipher.Block, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+
+	if block == nil {
+		return nil, fmt.Errorf("Uninitialized Cipher Block")
+	}
+
+	return block, nil
+}
+
+// GetEncryptedText adapted from secrets-api https://github.com/rancher/secrets-api/blob/master/pkg/aesutils/aesgcm.go#L53
+func encryptConfig(key []byte, clearText []byte) (string, error) {
+	secret := &AESSecret{}
+	cipherBlock, err := initBlock()
+	if err != nil {
+		return "", err
+	}
+
+	nonce, err := randomNonce(12)
+	if err != nil {
+		return "", err
+	}
+
+	secret.Nonce = nonce
+
+	gcm, err := cipher.NewGCM(cipherBlock)
+	if err != nil {
+		return "", err
+	}
+
+	secret.CipherText = gcm.Seal(nil, secret.Nonce, clearText, nil)
+
+	jsonSecret, err := json.Marshal(secret)
+	if err != nil {
+		return "", err
+	}
+
+	return string(jsonSecret), nil
+}
+
+// GetClearText adapted from secrets-api https://github.com/rancher/secrets-api/blob/master/pkg/aesutils/aesgcm.go#L86
+func decryptConfig(key []byte, secretBlob string) ([]byte, error) {
+	secret := &AESSecret{}
+
+	err := json.Unmarshal([]byte(secretBlob), secret)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	cipherBlock, err := initBlock()
+	if err != nil {
+		return []byte{}, err
+	}
+
+	gcm, err := cipher.NewGCM(cipherBlock)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	plainText, err := gcm.Open(nil, secret.Nonce, secret.CipherText, nil)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	return plainText, nil
+}
+
+// adapted from secrets-api https://github.com/rancher/secrets-api/blob/master/pkg/aesutils/aesgcm.go#L112
+func randomNonce(byteLength int) ([]byte, error) {
+	key := make([]byte, byteLength)
+
+	_, err := rand.Read(key)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	return key, nil
+}
+
+func readSettings(settings []string, provider string) (map[string]string, error) {
+	var dbSettings = make(map[string]map[string]string)
+	var nilSettings = make(map[string]string)
+	filters := make(map[string]interface{})
+	filters["key"] = "auth.config"
+	authColl, err := RancherClient.GenericObject.List(&client.ListOpts{
+		Filters: filters,
+	})
+	if err != nil {
+		log.Errorf("Error getting the go %v , error: %v", key, err)
+		return nil, err
+	}
+
+	if len(authColl.Data) == 0 {
+		log.Info("No config stored")
+		return nilSettings, nil
+	}
+
+	authConfigRes := authColl.Data[0]
+	authConfig := authConfigRes.ResourceData["data"]
+	byteSettings, err := decryptConfig(key, authConfig.(string))
+	err = json.Unmarshal(byteSettings, &dbSettings)
+	if err != nil {
+		return nilSettings, err
+	}
+	log.Debugf("Settings from db for provider %s: %v", provider, dbSettings)
+	return dbSettings[provider], nil
+}
+
+func readCommonSettings(settings []string) (map[string]string, error) {
 	var dbSettings = make(map[string]string)
 
 	for _, key := range settings {
@@ -176,23 +317,91 @@ func readSettings(settings []string) (map[string]string, error) {
 	return dbSettings, nil
 }
 
-func updateSettings(settings map[string]string) error {
-	for key, value := range settings {
-		log.Debugf("Update setting key:%v value: %v", key, value)
-		setting, err := RancherClient.Setting.ById(key)
+func updateSettings(saveConfig map[string]map[string]string) error {
+	log.Debugf("Updated auth config: %#v", saveConfig)
+	clearText, err := json.Marshal(saveConfig)
+	if err != nil {
+		return err
+	}
+
+	encrConf, err := encryptConfig(key, clearText)
+	if err != nil {
+		return err
+	}
+
+	resourceData := map[string]interface{}{
+		"data": encrConf,
+	}
+	// Save entire encryped conf in GO
+	filters := make(map[string]interface{})
+	filters["key"] = "auth.config"
+	authColl, err := RancherClient.GenericObject.List(&client.ListOpts{
+		Filters: filters,
+	})
+	if err != nil {
+		log.Errorf("Error getting the go %v , error: %v", key, err)
+		return err
+	}
+
+	if len(authColl.Data) == 0 {
+		_, err := RancherClient.GenericObject.Create(&client.GenericObject{
+			Name:         "auth.config",
+			Key:          "auth.config",
+			ResourceData: resourceData,
+			Kind:         "authConfig",
+		})
 		if err != nil {
-			log.Errorf("Error getting the setting %v , error: %v", key, err)
+			log.Errorf("Error creating the go, error: %v", err)
 			return err
 		}
-		if setting.InDb && value == "" {
-			err = RancherClient.Setting.Delete(setting)
+	} else {
+		// Get the previously saved data, decrypt and append
+		authConfig := make(map[string]map[string]string)
+		prevConfig := authColl.Data[0].ResourceData["data"]
+		byteSettings, err := decryptConfig(key, prevConfig.(string))
+		err = json.Unmarshal(byteSettings, &authConfig)
+		if err != nil {
+			return err
+		}
+		log.Debugf("Previous saved auth config: %v", authConfig)
+		for key, val := range authConfig {
+			saveConfig[key] = val
+		}
+		log.Debugf("Updated auth config: %v", saveConfig)
+		clearText, err := json.Marshal(saveConfig)
+		if err != nil {
+			return err
+		}
+
+		encrConf, err := encryptConfig(key, clearText)
+		if err != nil {
+			return err
+		}
+
+		resourceData := map[string]interface{}{
+			"data": encrConf,
+		}
+		_, err = RancherClient.GenericObject.Update(&authColl.Data[0], &client.GenericObject{
+			ResourceData: resourceData,
+		})
+		if err != nil {
+			log.Errorf("Error updating the go, error: %v", err)
+			return err
+		}
+	}
+	return nil
+}
+
+func updateCommonSettings(settings map[string]string) error {
+	for key, value := range settings {
+		if value != "" {
+			log.Debugf("Update setting key:%v value: %v", key, value)
+			setting, err := RancherClient.Setting.ById(key)
 			if err != nil {
-				log.Errorf("Error deleting the setting %v, error: %v", key, err)
+				log.Errorf("Error getting the setting %v , error: %v", key, err)
 				return err
 			}
-			continue
-		}
-		if value != "" {
+
 			setting, err = RancherClient.Setting.Update(setting, &client.Setting{
 				Value: value,
 			})
@@ -273,25 +482,27 @@ func UpdateConfig(authConfig model.AuthConfig) error {
 
 	providerSettings := newProvider.GetSettings()
 
-	//add the generic settings
-	providerSettings[accessModeSetting] = authConfig.AccessMode
-	providerSettings[userTypeSetting] = newProvider.GetUserType()
-	providerSettings[identitySeparatorSetting] = newProvider.GetIdentitySeparator()
-	providerSettings[allowedIdentitiesSetting] = getAllowedIDString(authConfig.AllowedIdentities, newProvider.GetIdentitySeparator())
-	providerSettings[providerNameSetting] = authConfig.Provider
-	providerSettings[providerSetting] = authConfig.Provider
-	providerSettings[externalProviderSetting] = "true"
-	err = updateSettings(providerSettings)
+	genObjConfig := make(map[string]map[string]string)
+	genObjConfig[newProvider.GetName()] = providerSettings
+	err = updateSettings(genObjConfig)
 	if err != nil {
 		log.Errorf("UpdateConfig: Error Storing the provider settings %v", err)
 		return err
 	}
-	//set the security setting last specifically
-	providerSettings = make(map[string]string)
-	providerSettings[securitySetting] = strconv.FormatBool(authConfig.Enabled)
-	err = updateSettings(providerSettings)
+
+	//add the generic settings
+	commonSettings := make(map[string]string)
+	commonSettings[accessModeSetting] = authConfig.AccessMode
+	commonSettings[userTypeSetting] = newProvider.GetUserType()
+	commonSettings[identitySeparatorSetting] = newProvider.GetIdentitySeparator()
+	commonSettings[allowedIdentitiesSetting] = getAllowedIDString(authConfig.AllowedIdentities, newProvider.GetIdentitySeparator())
+	commonSettings[providerNameSetting] = authConfig.Provider
+	commonSettings[providerSetting] = authConfig.Provider
+	commonSettings[externalProviderSetting] = "true"
+	commonSettings[securitySetting] = strconv.FormatBool(authConfig.Enabled)
+	err = updateCommonSettings(commonSettings)
 	if err != nil {
-		log.Errorf("UpdateConfig: Error Storing the provider security setting %v", err)
+		log.Errorf("UpdateConfig: Error Storing the common settings %v", err)
 		return err
 	}
 
@@ -304,6 +515,7 @@ func UpdateConfig(authConfig model.AuthConfig) error {
 		authConfigInMemory = authConfig
 	} else {
 		//reload the in-memory provider
+		log.Infof("Calling reload")
 		err = Reload()
 		if err != nil {
 			log.Errorf("Failed to reload the auth provider from db on updateConfig: %v", err)
@@ -319,7 +531,7 @@ func UpgradeSettings() error {
 	//read the current provider
 	var settings []string
 	settings = append(settings, providerSetting)
-	dbSettings, err := readSettings(settings)
+	dbSettings, err := readCommonSettings(settings)
 	if err != nil {
 		log.Errorf("UpgradeSettings: Error reading existing DB settings %v", err)
 		return err
@@ -342,26 +554,115 @@ func UpgradeSettings() error {
 			legacySettings = append(legacySettings, legacySettingsMap["accessModeSetting"])
 			legacySettings = append(legacySettings, legacySettingsMap["allowedIdentitiesSetting"])
 
-			dbLegacySettings, err := readSettings(legacySettings)
+			dbLegacySettings, err := readCommonSettings(legacySettings)
 			if err != nil {
 				log.Errorf("UpgradeSettings: Error reading existing DB legacy settings %v", err)
 				return err
 			}
 
 			//add the new settings
-			providerSettings := make(map[string]string)
-			providerSettings[userTypeSetting] = newProvider.GetUserType()
-			providerSettings[identitySeparatorSetting] = newProvider.GetIdentitySeparator()
-			providerSettings[accessModeSetting] = dbLegacySettings[legacySettingsMap["accessModeSetting"]]
-			providerSettings[allowedIdentitiesSetting] = dbLegacySettings[legacySettingsMap["allowedIdentitiesSetting"]]
-			providerSettings[providerNameSetting] = providerNameInDb
-			providerSettings[externalProviderSetting] = "true"
-			err = updateSettings(providerSettings)
+			commonSettings := map[string]string{}
+			commonSettings[accessModeSetting] = dbLegacySettings[legacySettingsMap["accessModeSetting"]]
+			commonSettings[userTypeSetting] = newProvider.GetUserType()
+			commonSettings[identitySeparatorSetting] = newProvider.GetIdentitySeparator()
+			commonSettings[allowedIdentitiesSetting] = dbLegacySettings[legacySettingsMap["allowedIdentitiesSetting"]]
+			commonSettings[providerNameSetting] = providerNameInDb
+			commonSettings[externalProviderSetting] = "true"
+
+			err = updateCommonSettings(commonSettings)
 			if err != nil {
 				log.Errorf("UpgradeSettings: Error Storing the new external provider settings %v", err)
 				return err
 			}
 		}
+	}
+	return nil
+}
+
+func UpgradeCase() error {
+	var settings []string
+	genObjConfig := make(map[string]map[string]string)
+	config := model.AuthConfig{Resource: client.Resource{
+		Type: "config",
+	}}
+
+	// check if GenericObject with key="auth.config" exists
+	filters := make(map[string]interface{})
+	filters["key"] = "auth.config"
+	authColl, err := RancherClient.GenericObject.List(&client.ListOpts{
+		Filters: filters,
+	})
+	if err != nil {
+		log.Errorf("Error getting the go 'auth.config', error: %v", err)
+		return err
+	}
+
+	if len(authColl.Data) > 0 {
+		log.Info("Config stored")
+		return nil
+	}
+
+	//add the common settings
+	settings = append(settings, accessModeSetting)
+	settings = append(settings, allowedIdentitiesSetting)
+	settings = append(settings, securitySetting)
+	settings = append(settings, providerSetting)
+	settings = append(settings, providerNameSetting)
+
+	dbSettings, err := readCommonSettings(settings)
+	if err != nil {
+		log.Errorf("GetConfig: Error reading DB settings %v", err)
+		return err
+	}
+
+	// Get all provider specific settings from setting table for previously configured auth control
+	for _, val := range providers.Providers {
+		p, err := providers.GetProvider(val)
+		if err != nil {
+			return err
+		}
+		pSettings, err := readCommonSettings(p.GetProviderSettingList(false))
+		if err != nil {
+			log.Errorf("GetConfig: Error reading DB settings for previous auth providers %v", err)
+			return err
+		}
+		genObjConfig[p.GetName()] = pSettings
+	}
+
+	config.AccessMode = dbSettings[accessModeSetting]
+	enabled, err := strconv.ParseBool(dbSettings[securitySetting])
+	if err == nil {
+		config.Enabled = enabled
+	} else {
+		config.Enabled = false
+	}
+
+	if enabled {
+		// GO doesn't exist, so first load the config struct, then get providerSettings for enabled provider
+		providerNameInDb := dbSettings[providerNameSetting]
+		config.Provider = providerNameInDb
+		newProvider, err := providers.GetProvider(providerNameInDb)
+		if err != nil {
+			return err
+		}
+
+		config.AllowedIdentities = getAllowedIdentities(dbSettings[allowedIdentitiesSetting], "", newProvider.GetIdentitySeparator())
+		providerSettings, err := readCommonSettings(newProvider.GetProviderSettingList(false))
+		if err != nil {
+			log.Errorf("GetConfig: Error reading provider DB settings %v", err)
+			return err
+		}
+		newProvider.AddProviderConfig(&config, providerSettings)
+
+		provider, err = initProviderWithConfig(&config)
+		if err != nil {
+			log.Errorf("UpdateConfig: Cannot update the config, error initializing the provider %v", err)
+			return err
+		}
+
+		providerSettings = provider.GetSettings()
+		genObjConfig[provider.GetName()] = providerSettings
+		return updateSettings(genObjConfig)
 	}
 	return nil
 }
@@ -383,7 +684,7 @@ func GetConfig(accessToken string, listOnly bool) (model.AuthConfig, error) {
 	settings = append(settings, providerNameSetting)
 	settings = append(settings, authServiceLogSetting)
 
-	dbSettings, err := readSettings(settings)
+	dbSettings, err := readCommonSettings(settings)
 	if err != nil {
 		log.Errorf("GetConfig: Error reading DB settings %v", err)
 		return config, err
@@ -432,7 +733,8 @@ func GetConfig(accessToken string, listOnly bool) (model.AuthConfig, error) {
 				return config, nil
 			}
 			config.AllowedIdentities = getAllowedIdentities(dbSettings[allowedIdentitiesSetting], accessToken, newProvider.GetIdentitySeparator())
-			providerSettings, err := readSettings(newProvider.GetProviderSettingList(listOnly))
+			providerSettings, err := readSettings(newProvider.GetProviderSettingList(listOnly), newProvider.GetName())
+			log.Debugf("Provider settings: %#v", providerSettings)
 			if err != nil {
 				log.Errorf("GetConfig: Error reading provider DB settings %v", err)
 				return config, nil
@@ -603,7 +905,7 @@ func GetRancherAPIHost() string {
 
 	//add the setting
 	settings = append(settings, apiHostSetting)
-	dbSettings, err := readSettings(settings)
+	dbSettings, err := readCommonSettings(settings)
 	if err != nil {
 		log.Errorf("getRancherAPIHost: Error reading DB setting %v", err)
 		return "http://localhost:8080"

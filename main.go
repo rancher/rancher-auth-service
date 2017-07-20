@@ -105,6 +105,12 @@ func main() {
 				"Specify the path to the file containing SAML/Shibboleth IDP Metadata file",
 			),
 		},
+		cli.StringFlag{
+			Name: "auth-config-file",
+			Usage: fmt.Sprintf(
+				"Auth config key",
+			),
+		},
 	}
 
 	app.Run(os.Args)
@@ -126,7 +132,12 @@ func StartService(c *cli.Context) {
 
 	log.Info("Starting Rancher Auth service")
 
-	err := server.Reload()
+	err := server.UpgradeCase()
+	if err != nil {
+		log.Fatalf("Failed on upgrade case: %v", err)
+	}
+
+	err = server.Reload()
 	if err != nil {
 		log.Fatalf("Failed to reload the auth provider from db on start: %v", err)
 	}
