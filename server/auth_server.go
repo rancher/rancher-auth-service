@@ -363,12 +363,15 @@ func updateSettings(saveConfig map[string]map[string]string) error {
 		if err != nil {
 			return err
 		}
+
+		// authConfig now was prevConfig
+		// saveConfig is to be saved, so authConfig should get added values from saveConfig
 		log.Debugf("Previous saved auth config: %v", authConfig)
-		for key, val := range authConfig {
-			saveConfig[key] = val
+		for key, val := range saveConfig {
+			authConfig[key] = val
 		}
-		log.Debugf("Updated auth config: %v", saveConfig)
-		clearText, err := json.Marshal(saveConfig)
+		log.Debugf("Updated auth config: %v", authConfig)
+		clearText, err := json.Marshal(authConfig)
 		if err != nil {
 			return err
 		}
