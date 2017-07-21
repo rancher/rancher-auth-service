@@ -563,6 +563,8 @@ func escapeLDAPSearchFilter(filter string) string {
 
 func (l *LClient) TestLogin(testAuthConfig *model.TestAuthConfig) error {
 	log.Info("Now generating Ldap token")
+	var lConn *ldap.Conn
+	var err error
 	split := strings.Split(testAuthConfig.Code, ":")
 	username, password := split[0], split[1]
 	externalID := getUserExternalID(username, testAuthConfig.AuthConfig.LdapConfig.LoginDomain)
@@ -574,10 +576,19 @@ func (l *LClient) TestLogin(testAuthConfig *model.TestAuthConfig) error {
 	ldapServer := testAuthConfig.AuthConfig.LdapConfig.Server
 	ldapPort := testAuthConfig.AuthConfig.LdapConfig.Port
 	log.Info("Now creating Ldap connection")
-	lConn, err := ldap.Dial("tcp", fmt.Sprintf("%s:%d", ldapServer, ldapPort))
-	if err != nil {
-		return fmt.Errorf("Error %v creating connecting", err)
+	if testAuthConfig.AuthConfig.LdapConfig.TLS {
+		tlsConfig := &tls.Config{RootCAs: l.ConstantsConfig.CAPool, InsecureSkipVerify: false, ServerName: ldapServer}
+		lConn, err = ldap.DialTLS("tcp", fmt.Sprintf("%s:%d", ldapServer, ldapPort), tlsConfig)
+		if err != nil {
+			return fmt.Errorf("Error %v creating ssl connection", err)
+		}
+	} else {
+		lConn, err = ldap.Dial("tcp", fmt.Sprintf("%s:%d", ldapServer, ldapPort))
+		if err != nil {
+			return fmt.Errorf("Error %v creating connection", err)
+		}
 	}
+
 	lConn.SetTimeout(time.Duration(testAuthConfig.AuthConfig.LdapConfig.ConnectionTimeout) * time.Second)
 	defer lConn.Close()
 
