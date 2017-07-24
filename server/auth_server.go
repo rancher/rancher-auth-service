@@ -16,6 +16,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/crewjam/saml/samlsp"
 	"github.com/dgrijalva/jwt-go"
+	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher/v2"
 	"github.com/rancher/rancher-auth-service/model"
 	"github.com/rancher/rancher-auth-service/providers"
@@ -614,8 +615,7 @@ func UpgradeCase() error {
 
 	dbSettings, err := readCommonSettings(settings)
 	if err != nil {
-		log.Errorf("GetConfig: Error reading DB settings %v", err)
-		return err
+		return errors.Wrap(err, "UpgradeCase: Error reading DB settings")
 	}
 
 	// Get all provider specific settings from setting table for previously configured auth control
@@ -624,10 +624,12 @@ func UpgradeCase() error {
 		if err != nil {
 			return err
 		}
+		if p == nil {
+			return errors.Wrapf(err, "UpgradeCase: Could not get the %s auth provider", val)
+		}
 		pSettings, err := readCommonSettings(p.GetProviderSettingList(false))
 		if err != nil {
-			log.Errorf("GetConfig: Error reading DB settings for previous auth providers %v", err)
-			return err
+			return errors.Wrap(err, "UpgradeCase: Error reading DB settings for previous auth providers")
 		}
 		genObjConfig[p.GetName()] = pSettings
 	}
@@ -643,24 +645,30 @@ func UpgradeCase() error {
 	if enabled {
 		// GO doesn't exist, so first load the config struct, then get providerSettings for enabled provider
 		providerNameInDb := dbSettings[providerNameSetting]
+		if !providers.IsProviderSupported(providerNameInDb) {
+			log.Debug("Auth provider not supported by rancher-auth-service")
+			return nil
+		}
 		config.Provider = providerNameInDb
 		newProvider, err := providers.GetProvider(providerNameInDb)
 		if err != nil {
 			return err
 		}
 
+		if newProvider == nil {
+			return errors.Wrapf(err, "UpgradeCase: Could not get the %s auth provider", config.Provider)
+		}
+
 		config.AllowedIdentities = getAllowedIdentities(dbSettings[allowedIdentitiesSetting], "", newProvider.GetIdentitySeparator())
 		providerSettings, err := readCommonSettings(newProvider.GetProviderSettingList(false))
 		if err != nil {
-			log.Errorf("GetConfig: Error reading provider DB settings %v", err)
-			return err
+			return errors.Wrap(err, "UpgradeCase: Error reading provider DB settings")
 		}
 		newProvider.AddProviderConfig(&config, providerSettings)
 
 		provider, err = initProviderWithConfig(&config)
 		if err != nil {
-			log.Errorf("UpdateConfig: Cannot update the config, error initializing the provider %v", err)
-			return err
+			return errors.Wrap(err, "UpgradeCase: Cannot update the config, error initializing the provider")
 		}
 
 		providerSettings = provider.GetSettings()
