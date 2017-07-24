@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/crewjam/saml/samlsp"
@@ -25,16 +26,17 @@ import (
 )
 
 const (
-	accessModeSetting        = "api.auth.access.mode"
-	allowedIdentitiesSetting = "api.auth.allowed.identities"
-	userTypeSetting          = "api.auth.user.type"
-	providerSetting          = "api.auth.provider.configured"
-	providerNameSetting      = "api.auth.provider.name.configured"
-	externalProviderSetting  = "api.auth.external.provider.configured"
-	securitySetting          = "api.security.enabled"
-	apiHostSetting           = "api.host"
-	identitySeparatorSetting = "api.auth.external.provider.identity.separator"
-	authServiceLogSetting    = "auth.service.log.level"
+	accessModeSetting                = "api.auth.access.mode"
+	allowedIdentitiesSetting         = "api.auth.allowed.identities"
+	userTypeSetting                  = "api.auth.user.type"
+	providerSetting                  = "api.auth.provider.configured"
+	providerNameSetting              = "api.auth.provider.name.configured"
+	externalProviderSetting          = "api.auth.external.provider.configured"
+	securitySetting                  = "api.security.enabled"
+	apiHostSetting                   = "api.host"
+	identitySeparatorSetting         = "api.auth.external.provider.identity.separator"
+	authServiceLogSetting            = "auth.service.log.level"
+	authServiceConfigUpdateTimestamp = "auth.service.config.update.timestamp"
 )
 
 var (
@@ -468,7 +470,6 @@ func getAllowedIdentities(idString string, accessToken string, separator string)
 
 //UpdateConfig updates the config in DB
 func UpdateConfig(authConfig model.AuthConfig) error {
-
 	if authConfig.Provider == "shibbolethconfig" {
 		authConfig.ShibbolethConfig.IDPMetadataFilePath = IDPMetadataFile
 		authConfig.ShibbolethConfig.SPSelfSignedCertFilePath = selfSignedCertFile
@@ -503,11 +504,18 @@ func UpdateConfig(authConfig model.AuthConfig) error {
 	commonSettings[providerNameSetting] = authConfig.Provider
 	commonSettings[providerSetting] = authConfig.Provider
 	commonSettings[externalProviderSetting] = "true"
+	commonSettings[authServiceConfigUpdateTimestamp] = time.Now().String()
+	err = updateCommonSettings(commonSettings)
+	if err != nil {
+		return errors.Wrap(err, "UpdateConfig: Error Storing the common settings")
+	}
+
+	//set the security setting last specifically
+	commonSettings = make(map[string]string)
 	commonSettings[securitySetting] = strconv.FormatBool(authConfig.Enabled)
 	err = updateCommonSettings(commonSettings)
 	if err != nil {
-		log.Errorf("UpdateConfig: Error Storing the common settings %v", err)
-		return err
+		return errors.Wrap(err, "UpdateConfig: Error Storing the provider securitySetting")
 	}
 
 	//switch the in-memory provider
