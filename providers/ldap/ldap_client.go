@@ -95,12 +95,6 @@ func (l *LClient) newConn() (*ldap.Conn, error) {
 
 	lConn.SetTimeout(time.Duration(l.Config.ConnectionTimeout) * time.Second)
 
-	serviceAccountUsername := getUserExternalID(l.Config.ServiceAccountUsername, l.Config.LoginDomain)
-	err = lConn.Bind(serviceAccountUsername, l.Config.ServiceAccountPassword)
-	if err != nil {
-		return nil, fmt.Errorf("Error %v in ldap bind", err)
-	}
-
 	return lConn, nil
 }
 
@@ -306,8 +300,14 @@ func (l *LClient) GetIdentity(distinguishedName string, scope string) (client.Id
 	if err != nil {
 		return nilIdentity, fmt.Errorf("Error %v creating connection", err)
 	}
-	defer lConn.Close()
+	// Bind before query
+	serviceAccountUsername := getUserExternalID(l.Config.ServiceAccountUsername, l.Config.LoginDomain)
+	err = lConn.Bind(serviceAccountUsername, l.Config.ServiceAccountPassword)
+	if err != nil {
+		return nilIdentity, fmt.Errorf("Error %v in ldap bind", err)
+	}
 
+	defer lConn.Close()
 	if strings.EqualFold(c.UserScope, scope) {
 		search = ldap.NewSearchRequest(distinguishedName,
 			ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
@@ -513,7 +513,14 @@ func (l *LClient) searchLdap(query string, scope string) ([]client.Identity, err
 	if err != nil {
 		return []client.Identity{}, fmt.Errorf("Error %v creating connection", err)
 	}
+	// Bind before query
+	serviceAccountUsername := getUserExternalID(l.Config.ServiceAccountUsername, l.Config.LoginDomain)
+	err = lConn.Bind(serviceAccountUsername, l.Config.ServiceAccountPassword)
+	if err != nil {
+		return nil, fmt.Errorf("Error %v in ldap bind", err)
+	}
 	defer lConn.Close()
+
 	results, err := lConn.Search(search)
 	if err != nil {
 		ldapErr, ok := reflect.ValueOf(err).Interface().(*ldap.Error)
@@ -645,6 +652,12 @@ func (l *LClient) RefreshToken(json map[string]string) (model.Token, error) {
 	lConn, err := l.newConn()
 	if err != nil {
 		return nilToken, fmt.Errorf("Error %v creating connection", err)
+	}
+	// Bind before query
+	serviceAccountUsername := getUserExternalID(l.Config.ServiceAccountUsername, l.Config.LoginDomain)
+	err = lConn.Bind(serviceAccountUsername, l.Config.ServiceAccountPassword)
+	if err != nil {
+		return nilToken, fmt.Errorf("Error %v in ldap bind", err)
 	}
 	defer lConn.Close()
 
