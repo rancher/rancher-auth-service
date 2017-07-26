@@ -650,7 +650,7 @@ func (l *LClient) RefreshToken(json map[string]string) (model.Token, int, error)
 	c := l.ConstantsConfig
 	searchConfig := l.SearchConfig
 	query := "(" + c.ObjectClassAttribute + "=*)"
-	search := ldap.NewSearchRequest(json["externalId"],
+	search := ldap.NewSearchRequest(json["accessToken"],
 		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
 		query,
 		searchConfig.UserSearchAttributes, nil)
@@ -698,7 +698,6 @@ func (l *LClient) userRecord(search *ldap.SearchRequest, lConn *ldap.Conn) (mode
 	var token = model.Token{Resource: client.Resource{
 		Type: "token",
 	}}
-	token.AccessToken = ""
 	token.IdentityList = identityList
 	token.Type = c.LdapJwt
 	userIdentity, ok := GetUserIdentity(identityList, c.UserScope)
@@ -706,5 +705,6 @@ func (l *LClient) userRecord(search *ldap.SearchRequest, lConn *ldap.Conn) (mode
 		return nilToken, status, fmt.Errorf("User identity not found for Ldap")
 	}
 	token.ExternalAccountID = userIdentity.ExternalId
+	token.AccessToken = userIdentity.ExternalId
 	return token, status, nil
 }

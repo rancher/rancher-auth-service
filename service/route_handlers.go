@@ -38,7 +38,6 @@ func CreateToken(w http.ResponseWriter, r *http.Request) {
 
 	securityCode := jsonInput["code"]
 	accessToken := jsonInput["accessToken"]
-	externalID := jsonInput["externalId"]
 
 	if securityCode != "" {
 		log.Debugf("CreateToken called with securityCode %s", securityCode)
@@ -53,7 +52,7 @@ func CreateToken(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		api.GetApiContext(r).Write(&token)
-	} else if accessToken != "" || externalID != "" {
+	} else if accessToken != "" {
 		log.Debugf("RefreshToken called with accessToken %s", accessToken)
 		//getToken
 		token, status, err := server.RefreshToken(jsonInput)
