@@ -102,6 +102,7 @@ func (l *LClient) newConn() (*ldap.Conn, error) {
 func (l *LClient) GenerateToken(jsonInput map[string]string) (model.Token, error) {
 	log.Info("Now generating Ldap token")
 	searchConfig := l.SearchConfig
+	// statusCode := 500
 
 	//getLdapToken:ADTokenCreator
 	//getIdentities: ADIdentityProvider
@@ -121,8 +122,16 @@ func (l *LClient) GenerateToken(jsonInput map[string]string) (model.Token, error
 	log.Debug("Binding username password")
 	err = lConn.Bind(externalID, password)
 	if err != nil {
+		if ldapErr, ok := err.(*ldap.Error); ok {
+			if ldapErr.ResultCode == ldap.LDAPResultInvalidCredentials {
+				// statusCode := 401
+				// We can send unauthorized from here
+			}
+		}
+		// for everything else we can send 500
 		return nilToken, fmt.Errorf("Error %v in ldap bind", err)
 	}
+
 	defer lConn.Close()
 	samName := username
 	if strings.Contains(username, "\\") {
