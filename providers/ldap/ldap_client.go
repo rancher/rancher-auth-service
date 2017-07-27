@@ -99,29 +99,35 @@ func (l *LClient) newConn() (*ldap.Conn, error) {
 }
 
 // GenerateToken generates token
-func (l *LClient) GenerateToken(jsonInput map[string]string) (model.Token, error) {
+func (l *LClient) GenerateToken(jsonInput map[string]string) (model.Token, int, error) {
 	log.Info("Now generating Ldap token")
 	searchConfig := l.SearchConfig
 
 	//getLdapToken:ADTokenCreator
 	//getIdentities: ADIdentityProvider
+	var status int
 
 	split := strings.Split(jsonInput["code"], ":")
 	username, password := split[0], split[1]
 	externalID := getUserExternalID(username, l.Config.LoginDomain)
 
 	if password == "" {
-		return nilToken, fmt.Errorf("Failed to login, password not provided")
+		status = 401
+		return nilToken, status, fmt.Errorf("Failed to login, password not provided")
 	}
 
 	lConn, err := l.newConn()
 	if err != nil {
-		return nilToken, fmt.Errorf("Error %v creating connection", err)
+		return nilToken, status, err
 	}
 	log.Debug("Binding username password")
 	err = lConn.Bind(externalID, password)
+
 	if err != nil {
-		return nilToken, fmt.Errorf("Error %v in ldap bind", err)
+		if ldap.IsErrorWithCode(err, ldap.LDAPResultInvalidCredentials) {
+			status = 401
+		}
+		return nilToken, status, fmt.Errorf("Error %v in ldap bind", err)
 	}
 	defer lConn.Close()
 	samName := username
@@ -132,7 +138,7 @@ func (l *LClient) GenerateToken(jsonInput map[string]string) (model.Token, error
 	if l.AccessMode == "required" {
 		groupFilter, err := l.getAllowedIdentitiesFilter()
 		if err != nil {
-			return nilToken, err
+			return nilToken, status, err
 		}
 		if len(groupFilter) > 1 {
 			groupQuery := "(&" + query + groupFilter + ")"
@@ -640,7 +646,7 @@ func (l *LClient) hasPermission(attributes []*ldap.EntryAttribute) bool {
 	return permission != l.Config.UserDisabledBitMask
 }
 
-func (l *LClient) RefreshToken(json map[string]string) (model.Token, error) {
+func (l *LClient) RefreshToken(json map[string]string) (model.Token, int, error) {
 	c := l.ConstantsConfig
 	searchConfig := l.SearchConfig
 	query := "(" + c.ObjectClassAttribute + "=*)"
@@ -649,39 +655,44 @@ func (l *LClient) RefreshToken(json map[string]string) (model.Token, error) {
 		query,
 		searchConfig.UserSearchAttributes, nil)
 
+	var status int
 	lConn, err := l.newConn()
 	if err != nil {
-		return nilToken, fmt.Errorf("Error %v creating connection", err)
+		return nilToken, status, fmt.Errorf("Error %v creating connection", err)
 	}
 	// Bind before query
 	serviceAccountUsername := getUserExternalID(l.Config.ServiceAccountUsername, l.Config.LoginDomain)
 	err = lConn.Bind(serviceAccountUsername, l.Config.ServiceAccountPassword)
 	if err != nil {
-		return nilToken, fmt.Errorf("Error %v in ldap bind", err)
+		if ldap.IsErrorWithCode(err, ldap.LDAPResultInvalidCredentials) {
+			status = 401
+		}
+		return nilToken, status, fmt.Errorf("Error %v in ldap bind", err)
 	}
 	defer lConn.Close()
 
 	return l.userRecord(search, lConn)
 }
 
-func (l *LClient) userRecord(search *ldap.SearchRequest, lConn *ldap.Conn) (model.Token, error) {
+func (l *LClient) userRecord(search *ldap.SearchRequest, lConn *ldap.Conn) (model.Token, int, error) {
+	var status int
 	c := l.ConstantsConfig
 	result, err := lConn.Search(search)
 	if err != nil {
-		return nilToken, err
+		return nilToken, status, err
 	}
 
 	if len(result.Entries) < 1 {
 		log.Errorf("Cannot locate user information for %s", search.Filter)
-		return nilToken, nil
+		return nilToken, status, nil
 	} else if len(result.Entries) > 1 {
 		log.Error("More than one result")
-		return nilToken, nil
+		return nilToken, status, nil
 	}
 
 	identityList, err := l.getIdentitiesFromSearchResult(result)
 	if err != nil {
-		return nilToken, err
+		return nilToken, status, err
 	}
 
 	var token = model.Token{Resource: client.Resource{
@@ -692,8 +703,8 @@ func (l *LClient) userRecord(search *ldap.SearchRequest, lConn *ldap.Conn) (mode
 	token.Type = c.LdapJwt
 	userIdentity, ok := GetUserIdentity(identityList, c.UserScope)
 	if !ok {
-		return nilToken, fmt.Errorf("User identity not found for Ldap")
+		return nilToken, status, fmt.Errorf("User identity not found for Ldap")
 	}
 	token.ExternalAccountID = userIdentity.ExternalId
-	return token, nil
+	return token, status, nil
 }

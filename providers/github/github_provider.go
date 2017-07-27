@@ -57,28 +57,30 @@ func (g *GProvider) GetUserType() string {
 }
 
 //GenerateToken authenticates the given code and returns the token
-func (g *GProvider) GenerateToken(json map[string]string) (model.Token, error) {
+func (g *GProvider) GenerateToken(json map[string]string) (model.Token, int, error) {
 	//getAccessToken
 	securityCode := json["code"]
 	accessToken := json["accessToken"]
+	status := 0
 
 	if securityCode != "" {
 		log.Debugf("GitHubIdentityProvider GenerateToken called for securityCode %v", securityCode)
 		accessToken, err := g.githubClient.getAccessToken(securityCode)
 		if err != nil {
 			log.Errorf("Error generating accessToken from github %v", err)
-			return model.Token{}, err
+			return model.Token{}, status, err
 		}
 		log.Debugf("Received AccessToken from github %v", accessToken)
 		return g.createToken(accessToken)
 	} else if accessToken != "" {
 		return g.createToken(accessToken)
 	} else {
-		return model.Token{}, fmt.Errorf("Cannot gerenate token from github, invalid request data")
+		return model.Token{}, status, fmt.Errorf("Cannot gerenate token from github, invalid request data")
 	}
 }
 
-func (g *GProvider) createToken(accessToken string) (model.Token, error) {
+func (g *GProvider) createToken(accessToken string) (model.Token, int, error) {
+	status := 0
 	var token = model.Token{Resource: client.Resource{
 		Type: "token",
 	}}
@@ -87,17 +89,17 @@ func (g *GProvider) createToken(accessToken string) (model.Token, error) {
 	identities, err := g.GetIdentities(accessToken)
 	if err != nil {
 		log.Errorf("Error getting identities using accessToken from github %v", err)
-		return model.Token{}, err
+		return model.Token{}, status, err
 	}
 	token.IdentityList = identities
 	token.Type = TokenType
 	user, ok := GetUserIdentity(identities, UserType)
 	if !ok {
 		log.Error("User identity not found using accessToken from github")
-		return model.Token{}, fmt.Errorf("User identity not found using accessToken from github")
+		return model.Token{}, status, fmt.Errorf("User identity not found using accessToken from github")
 	}
 	token.ExternalAccountID = user.ExternalId
-	return token, nil
+	return token, status, nil
 }
 
 //GetUserIdentity returns the "user" from the list of identities
@@ -111,13 +113,13 @@ func GetUserIdentity(identities []client.Identity, userType string) (client.Iden
 }
 
 //RefreshToken re-authenticates and generate a new token
-func (g *GProvider) RefreshToken(json map[string]string) (model.Token, error) {
+func (g *GProvider) RefreshToken(json map[string]string) (model.Token, int, error) {
 	accessToken := json["accessToken"]
 	if accessToken != "" {
 		log.Debugf("GitHubIdentityProvider RefreshToken called for accessToken %v", accessToken)
 		return g.createToken(accessToken)
 	}
-	return model.Token{}, fmt.Errorf("Cannot refresh token from github, no access token found in request")
+	return model.Token{}, 0, fmt.Errorf("Cannot refresh token from github, no access token found in request")
 }
 
 //GetIdentities returns list of user and group identities associated to this token

@@ -21,8 +21,8 @@ func RegisterProviders() {
 type IdentityProvider interface {
 	GetName() string
 	GetUserType() string
-	GenerateToken(json map[string]string) (model.Token, error)
-	RefreshToken(json map[string]string) (model.Token, error)
+	GenerateToken(json map[string]string) (model.Token, int, error)
+	RefreshToken(json map[string]string) (model.Token, int, error)
 	GetIdentities(accessToken string) ([]client.Identity, error)
 	GetIdentity(externalID string, externalIDType string, accessToken string) (client.Identity, error)
 	SearchIdentities(name string, exactMatch bool, accessToken string) ([]client.Identity, error)
