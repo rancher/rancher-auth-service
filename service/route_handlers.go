@@ -43,20 +43,26 @@ func CreateToken(w http.ResponseWriter, r *http.Request) {
 	if securityCode != "" {
 		log.Debugf("CreateToken called with securityCode %s", securityCode)
 		//getToken
-		token, err := server.CreateToken(jsonInput)
+		token, status, err := server.CreateToken(jsonInput)
 		if err != nil {
 			log.Errorf("GetToken failed with error: %v", err)
-			ReturnHTTPError(w, r, http.StatusInternalServerError, fmt.Sprintf("Error getting the token: %v", err))
+			if status == 0 {
+				status = http.StatusInternalServerError
+			}
+			ReturnHTTPError(w, r, status, fmt.Sprintf("%v", err))
 			return
 		}
 		api.GetApiContext(r).Write(&token)
 	} else if accessToken != "" || externalID != "" {
 		log.Debugf("RefreshToken called with accessToken %s", accessToken)
 		//getToken
-		token, err := server.RefreshToken(jsonInput)
+		token, status, err := server.RefreshToken(jsonInput)
 		if err != nil {
 			log.Errorf("GetToken failed with error: %v", err)
-			ReturnHTTPError(w, r, http.StatusInternalServerError, fmt.Sprintf("Error getting the token: %v", err))
+			if status == 0 {
+				status = http.StatusInternalServerError
+			}
+			ReturnHTTPError(w, r, status, fmt.Sprintf("%v", err))
 			return
 		}
 		api.GetApiContext(r).Write(&token)

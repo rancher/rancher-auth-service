@@ -814,11 +814,11 @@ func Reload() error {
 }
 
 //CreateToken will authenticate with provider and create a jwt token
-func CreateToken(json map[string]string) (model.Token, error) {
+func CreateToken(json map[string]string) (model.Token, int, error) {
 	if provider != nil {
-		token, err := provider.GenerateToken(json)
+		token, status, err := provider.GenerateToken(json)
 		if err != nil {
-			return model.Token{}, err
+			return model.Token{}, status, err
 		}
 
 		payload := make(map[string]interface{})
@@ -826,21 +826,21 @@ func CreateToken(json map[string]string) (model.Token, error) {
 
 		jwt, err := util.CreateTokenWithPayload(payload, privateKey)
 		if err != nil {
-			return model.Token{}, err
+			return model.Token{}, 0, err
 		}
 		token.JwtToken = jwt
 
-		return token, nil
+		return token, 0, nil
 	}
-	return model.Token{}, fmt.Errorf("No auth provider configured")
+	return model.Token{}, 0, fmt.Errorf("No auth provider configured")
 }
 
 //RefreshToken will refresh a jwt token
-func RefreshToken(json map[string]string) (model.Token, error) {
+func RefreshToken(json map[string]string) (model.Token, int, error) {
 	if provider != nil {
-		token, err := provider.RefreshToken(json)
+		token, status, err := provider.RefreshToken(json)
 		if err != nil {
-			return model.Token{}, err
+			return model.Token{}, status, err
 		}
 
 		payload := make(map[string]interface{})
@@ -848,12 +848,12 @@ func RefreshToken(json map[string]string) (model.Token, error) {
 
 		jwt, err := util.CreateTokenWithPayload(payload, privateKey)
 		if err != nil {
-			return model.Token{}, err
+			return model.Token{}, 0, err
 		}
 		token.JwtToken = jwt
-		return token, nil
+		return token, 0, nil
 	}
-	return model.Token{}, fmt.Errorf("No auth provider configured")
+	return model.Token{}, 0, fmt.Errorf("No auth provider configured")
 }
 
 func identitiesToIDList(identities []client.Identity) []string {

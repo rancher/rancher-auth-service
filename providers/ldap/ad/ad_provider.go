@@ -84,7 +84,7 @@ func (a *ADProvider) GetUserType() string {
 	return UserScope
 }
 
-func (a *ADProvider) GenerateToken(jsonInput map[string]string) (model.Token, error) {
+func (a *ADProvider) GenerateToken(jsonInput map[string]string) (model.Token, int, error) {
 	return a.LdapClient.GenerateToken(jsonInput)
 }
 
@@ -252,7 +252,7 @@ func (a *ADProvider) LoadConfig(authConfig *model.AuthConfig) error {
 }
 
 //RefreshToken re-authenticates and generate a new token
-func (a *ADProvider) RefreshToken(json map[string]string) (model.Token, error) {
+func (a *ADProvider) RefreshToken(json map[string]string) (model.Token, int, error) {
 	return a.LdapClient.RefreshToken(json)
 }
 

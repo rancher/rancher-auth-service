@@ -55,8 +55,9 @@ func (s *SProvider) GetUserType() string {
 }
 
 //GenerateToken generates a token from the input json data
-func (s *SProvider) GenerateToken(jsonInput map[string]string) (model.Token, error) {
+func (s *SProvider) GenerateToken(jsonInput map[string]string) (model.Token, int, error) {
 	//getAccessToken
+	status := 0
 	inputMap := jsonInput["code"]
 	if inputMap != "" {
 		log.Debugf("%vIdentityProvider GenerateToken called for code %v", Name, inputMap)
@@ -65,7 +66,7 @@ func (s *SProvider) GenerateToken(jsonInput map[string]string) (model.Token, err
 
 		if err := json.Unmarshal([]byte(inputMap), &samlData); err != nil {
 			log.Errorf("Error getting saml data from input %v", err)
-			return model.Token{}, err
+			return model.Token{}, status, err
 		}
 
 		log.Debugf("samlData %v", samlData)
@@ -78,7 +79,7 @@ func (s *SProvider) GenerateToken(jsonInput map[string]string) (model.Token, err
 		accounts, err := s.shibClient.getShibIdentities(samlData)
 		if err != nil {
 			log.Errorf("Error getting identities from saml data from Shibboleth %v", err)
-			return model.Token{}, err
+			return model.Token{}, status, err
 		}
 
 		for _, acct := range accounts {
@@ -101,14 +102,14 @@ func (s *SProvider) GenerateToken(jsonInput map[string]string) (model.Token, err
 		user, ok := GetUserIdentity(identities, UserType)
 		if !ok {
 			log.Error("User identity not found from %v", Name)
-			return model.Token{}, fmt.Errorf("User identity not found from %v", Name)
+			return model.Token{}, status, fmt.Errorf("User identity not found from %v", Name)
 		}
 		token.ExternalAccountID = user.ExternalId
 
 		log.Debugf("token %v", token)
-		return token, nil
+		return token, status, nil
 	}
-	return model.Token{}, fmt.Errorf("Cannot gerenate token from github, invalid request data")
+	return model.Token{}, status, fmt.Errorf("Cannot gerenate token from github, invalid request data")
 }
 
 //GetUserIdentity returns the "user" from the list of identities
@@ -122,9 +123,9 @@ func GetUserIdentity(identities []client.Identity, userType string) (client.Iden
 }
 
 //RefreshToken re-authenticates and generate a new token
-func (s *SProvider) RefreshToken(json map[string]string) (model.Token, error) {
+func (s *SProvider) RefreshToken(json map[string]string) (model.Token, int, error) {
 	log.Infof("%s IdentityProvider does not support RefreshToken API", Name)
-	return model.Token{}, nil
+	return model.Token{}, 0, nil
 }
 
 //GetIdentities returns list of user and group identities associated to this token
