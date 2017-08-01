@@ -276,7 +276,7 @@ func randomNonce(byteLength int) ([]byte, error) {
 	return key, nil
 }
 
-func readSettings(settings []string, provider string) (map[string]string, error) {
+func readSettings(provider string) (map[string]string, error) {
 	var dbSettings = make(map[string]map[string]string)
 	var nilSettings = make(map[string]string)
 	filters := make(map[string]interface{})
@@ -690,6 +690,8 @@ func UpgradeCase() error {
 func GetConfig(accessToken string, listOnly bool) (model.AuthConfig, error) {
 	var config model.AuthConfig
 	var settings []string
+	var allowedSettings = make(map[string]bool)
+	var secretSettings []string
 
 	config = model.AuthConfig{Resource: client.Resource{
 		Type: "config",
@@ -752,7 +754,22 @@ func GetConfig(accessToken string, listOnly bool) (model.AuthConfig, error) {
 				return config, nil
 			}
 			config.AllowedIdentities = getAllowedIdentities(dbSettings[allowedIdentitiesSetting], accessToken, newProvider.GetIdentitySeparator())
-			providerSettings, err := readSettings(newProvider.GetProviderSettingList(listOnly), newProvider.GetName())
+			settingNames := newProvider.GetProviderSettingList(listOnly)
+			providerSettings, err := readSettings(newProvider.GetName())
+			// Filter out provider specific secret settings if listOnly=true
+			if listOnly {
+				for _, s := range settingNames {
+					allowedSettings[s] = true
+				}
+				for k := range providerSettings {
+					if !allowedSettings[k] {
+						secretSettings = append(secretSettings, k)
+					}
+				}
+				for _, k := range secretSettings {
+					delete(providerSettings, k)
+				}
+			}
 			log.Debugf("Provider settings: %#v", providerSettings)
 			if err != nil {
 				log.Errorf("GetConfig: Error reading provider DB settings %v", err)
