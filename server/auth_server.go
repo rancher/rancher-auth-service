@@ -504,7 +504,6 @@ func UpdateConfig(authConfig model.AuthConfig) error {
 	commonSettings[providerNameSetting] = authConfig.Provider
 	commonSettings[providerSetting] = authConfig.Provider
 	commonSettings[externalProviderSetting] = "true"
-	commonSettings[authServiceConfigUpdateTimestamp] = time.Now().String()
 	err = updateCommonSettings(commonSettings)
 	if err != nil {
 		return errors.Wrap(err, "UpdateConfig: Error Storing the common settings")
@@ -513,6 +512,7 @@ func UpdateConfig(authConfig model.AuthConfig) error {
 	//set the security setting last specifically
 	commonSettings = make(map[string]string)
 	commonSettings[securitySetting] = strconv.FormatBool(authConfig.Enabled)
+	commonSettings[authServiceConfigUpdateTimestamp] = time.Now().String()
 	err = updateCommonSettings(commonSettings)
 	if err != nil {
 		return errors.Wrap(err, "UpdateConfig: Error Storing the provider securitySetting")
@@ -528,7 +528,15 @@ func UpdateConfig(authConfig model.AuthConfig) error {
 	} else {
 		//reload the in-memory provider
 		log.Infof("Calling reload")
-		err = Reload()
+		skipped, err := Reload(true)
+		for skipped {
+			if err != nil {
+				log.Errorf("Failed to reload the auth provider from db on updateConfig: %v", err)
+				return err
+			}
+			time.Sleep(30 * time.Millisecond)
+			skipped, err = Reload(true)
+		}
 		if err != nil {
 			log.Errorf("Failed to reload the auth provider from db on updateConfig: %v", err)
 			return err
@@ -784,10 +792,11 @@ func GetConfig(accessToken string, listOnly bool) (model.AuthConfig, error) {
 }
 
 //Reload will reload the config from DB and reinit the provider
-func Reload() error {
+func Reload(fromUpdate bool) (bool, error) {
 	//put msg on channel, so that any other request can wait
 	select {
 	case *refreshReqChannel <- 1:
+		log.Debugf("Reload config is called fromUpdate %v", fromUpdate)
 		//read config from db
 		authConfig, err := GetConfig("", false)
 
@@ -795,12 +804,12 @@ func Reload() error {
 		if authConfig.Provider == "" {
 			log.Info("No Auth provider configured")
 			<-*refreshReqChannel
-			return nil
+			return false, nil
 		}
 		if !providers.IsProviderSupported(authConfig.Provider) {
 			log.Debug("Auth provider not supported by rancher-auth-service")
 			<-*refreshReqChannel
-			return nil
+			return false, nil
 		}
 
 		if authConfig.Provider == "shibbolethconfig" {
@@ -810,13 +819,13 @@ func Reload() error {
 			authConfig.ShibbolethConfig.RancherAPIHost = GetRancherAPIHost()
 		}
 
-		log.Infof(" Auth provider configured %v", authConfig.Provider)
+		log.Infof("Auth provider configured %v", authConfig.Provider)
 
 		newProvider, err := initProviderWithConfig(&authConfig)
 		if err != nil {
 			log.Errorf("Error initializing the provider %v", err)
 			<-*refreshReqChannel
-			return err
+			return false, err
 		}
 		if authConfig.Provider == "shibbolethconfig" {
 			SamlServiceProvider = authConfig.ShibbolethConfig.SamlServiceProvider
@@ -824,10 +833,11 @@ func Reload() error {
 		provider = newProvider
 		authConfigInMemory = authConfig
 		<-*refreshReqChannel
+		return false, nil
 	default:
-		log.Infof("Reload config is already in process, skipping")
+		log.Debugf("Reload config is already in process, skipping, called from UpdateConfig: %v", fromUpdate)
+		return true, nil
 	}
-	return nil
 }
 
 //CreateToken will authenticate with provider and create a jwt token
