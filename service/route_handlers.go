@@ -241,7 +241,7 @@ func GetConfig(w http.ResponseWriter, r *http.Request) {
 //Reload is a handler for POST /reloadconfig, reloads the config from Cattle database and initializes the provider
 func Reload(w http.ResponseWriter, r *http.Request) {
 	log.Debugf("Reload called")
-	err := server.Reload()
+	_, err := server.Reload(false)
 	if err != nil {
 		//failed to reload the config from DB
 		log.Debugf("Reload failed with error %v", err)

@@ -137,7 +137,8 @@ func StartService(c *cli.Context) {
 		log.Fatalf("Failed on upgrade case: %v", err)
 	}
 
-	err = server.Reload()
+	_, err = server.Reload(false)
+
 	if err != nil {
 		log.Fatalf("Failed to reload the auth provider from db on start: %v", err)
 	}
