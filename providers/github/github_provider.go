@@ -304,8 +304,8 @@ func (g *GProvider) GetIdentitySeparator() string {
 	return ","
 }
 
-func (g *GProvider) TestLogin(testAuthConfig *model.TestAuthConfig) error {
-	return nil
+func (g *GProvider) TestLogin(testAuthConfig *model.TestAuthConfig) (int, error) {
+	return 0, nil
 }
 
 func (g *GProvider) GetProviderConfigResource() interface{} {

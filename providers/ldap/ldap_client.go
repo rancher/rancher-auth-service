@@ -574,16 +574,17 @@ func escapeLDAPSearchFilter(filter string) string {
 	return buf.String()
 }
 
-func (l *LClient) TestLogin(testAuthConfig *model.TestAuthConfig) error {
+func (l *LClient) TestLogin(testAuthConfig *model.TestAuthConfig) (int, error) {
 	log.Info("Now generating Ldap token")
 	var lConn *ldap.Conn
 	var err error
+	var status int
 	split := strings.Split(testAuthConfig.Code, ":")
 	username, password := split[0], split[1]
 	externalID := getUserExternalID(username, testAuthConfig.AuthConfig.LdapConfig.LoginDomain)
 
 	if password == "" {
-		return fmt.Errorf("Failed to login, password not provided")
+		return 401, fmt.Errorf("Failed to login, password not provided")
 	}
 
 	ldapServer := testAuthConfig.AuthConfig.LdapConfig.Server
@@ -593,12 +594,12 @@ func (l *LClient) TestLogin(testAuthConfig *model.TestAuthConfig) error {
 		tlsConfig := &tls.Config{RootCAs: l.ConstantsConfig.CAPool, InsecureSkipVerify: false, ServerName: ldapServer}
 		lConn, err = ldap.DialTLS("tcp", fmt.Sprintf("%s:%d", ldapServer, ldapPort), tlsConfig)
 		if err != nil {
-			return fmt.Errorf("Error %v creating ssl connection", err)
+			return status, fmt.Errorf("Error %v creating ssl connection", err)
 		}
 	} else {
 		lConn, err = ldap.Dial("tcp", fmt.Sprintf("%s:%d", ldapServer, ldapPort))
 		if err != nil {
-			return fmt.Errorf("Error %v creating connection", err)
+			return status, fmt.Errorf("Error %v creating connection", err)
 		}
 	}
 
@@ -608,10 +609,13 @@ func (l *LClient) TestLogin(testAuthConfig *model.TestAuthConfig) error {
 	log.Info("Binding username password")
 	err = lConn.Bind(externalID, password)
 	if err != nil {
-		return fmt.Errorf("Error %v in ldap bind", err)
+		if ldap.IsErrorWithCode(err, ldap.LDAPResultInvalidCredentials) {
+			status = 401
+		}
+		return status, fmt.Errorf("Error %v in ldap bind", err)
 	}
 
-	return nil
+	return status, nil
 }
 
 func getUserExternalID(username string, loginDomain string) string {

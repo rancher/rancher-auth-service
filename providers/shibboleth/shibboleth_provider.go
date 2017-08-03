@@ -275,8 +275,8 @@ func (s *SProvider) GetIdentitySeparator() string {
 	return "#shibsaml#"
 }
 
-func (s *SProvider) TestLogin(testAuthConfig *model.TestAuthConfig) error {
-	return nil
+func (s *SProvider) TestLogin(testAuthConfig *model.TestAuthConfig) (int, error) {
+	return 0, nil
 }
 
 func (s *SProvider) GetProviderConfigResource() interface{} {

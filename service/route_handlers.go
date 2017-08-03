@@ -431,9 +431,12 @@ func TestLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = server.TestLogin(testAuthConfig)
+	status, err := server.TestLogin(testAuthConfig)
 	if err != nil {
 		log.Errorf("TestLogin GetProvider failed with error: %v", err)
-		ReturnHTTPError(w, r, http.StatusUnauthorized, "Unauthorized, invalid credentials")
+		if status == 0 {
+			status = http.StatusInternalServerError
+		}
+		ReturnHTTPError(w, r, status, fmt.Sprintf("%v", err))
 	}
 }
