@@ -269,7 +269,7 @@ func (a *ADProvider) GetRedirectURL() string {
 	return ""
 }
 
-func (a *ADProvider) TestLogin(testAuthConfig *model.TestAuthConfig) error {
+func (a *ADProvider) TestLogin(testAuthConfig *model.TestAuthConfig) (int, error) {
 	return a.LdapClient.TestLogin(testAuthConfig)
 }
 

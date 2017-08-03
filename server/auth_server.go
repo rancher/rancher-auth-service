@@ -1045,19 +1045,19 @@ func IsSamlJWTValid(value string) (bool, map[string][]string) {
 	return false, samlData
 }
 
-func TestLogin(testAuthConfig model.TestAuthConfig) error {
+func TestLogin(testAuthConfig model.TestAuthConfig) (int, error) {
 	authConfig := testAuthConfig.AuthConfig
 	newProvider, err := initProviderWithConfig(&authConfig)
 	if err != nil {
 		log.Errorf("GetProvider: Error initializing the provider %v", err)
-		return err
+		return 0, err
 	}
 
 	log.Infof("newProvider %v", newProvider.GetName())
-	err = newProvider.TestLogin(&testAuthConfig)
+	status, err := newProvider.TestLogin(&testAuthConfig)
 	if err != nil {
 		log.Errorf("GetProvider: Error in login %v", err)
-		return err
+		return status, err
 	}
-	return nil
+	return 0, nil
 }

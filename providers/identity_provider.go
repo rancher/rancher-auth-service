@@ -34,7 +34,7 @@ type IdentityProvider interface {
 	GetLegacySettings() map[string]string
 	GetRedirectURL() string
 	GetIdentitySeparator() string
-	TestLogin(testAuthConfig *model.TestAuthConfig) error
+	TestLogin(testAuthConfig *model.TestAuthConfig) (int, error)
 	GetProviderConfigResource() interface{}
 	CustomizeSchema(schema *v1client.Schema) *v1client.Schema
 	GetProviderSecretSettings() []string
