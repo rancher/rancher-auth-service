@@ -333,6 +333,12 @@ func (a *ADProvider) CustomizeSchema(schema *v1client.Schema) *v1client.Schema {
 	return schema
 }
 
+func (a *ADProvider) GetProviderSecretSettings() []string {
+	var settings []string
+	settings = append(settings, ServiceAccountPasswordSetting)
+	return settings
+}
+
 func getAllowedIDString(allowedIdentities []client.Identity, separator string) string {
 	if len(allowedIdentities) > 0 {
 		var idArray []string

@@ -37,6 +37,7 @@ type IdentityProvider interface {
 	TestLogin(testAuthConfig *model.TestAuthConfig) error
 	GetProviderConfigResource() interface{}
 	CustomizeSchema(schema *v1client.Schema) *v1client.Schema
+	GetProviderSecretSettings() []string
 }
 
 //GetProvider returns an instance of an identyityProvider by name

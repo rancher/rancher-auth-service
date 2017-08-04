@@ -286,3 +286,10 @@ func (s *SProvider) GetProviderConfigResource() interface{} {
 func (s *SProvider) CustomizeSchema(schema *v1client.Schema) *v1client.Schema {
 	return schema
 }
+
+func (s *SProvider) GetProviderSecretSettings() []string {
+	var settings []string
+	settings = append(settings, spSelfSignedKeySetting)
+	settings = append(settings, idpMetadataContentSetting)
+	return settings
+}
