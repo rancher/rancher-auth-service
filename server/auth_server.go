@@ -320,7 +320,7 @@ func readCommonSettings(settings []string) (map[string]string, error) {
 	return dbSettings, nil
 }
 
-func updateSettings(saveConfig map[string]map[string]string) error {
+func updateSettings(saveConfig map[string]map[string]string, secretSettings []string, providerName string) error {
 	log.Debugf("Updated auth config: %#v", saveConfig)
 	clearText, err := json.Marshal(saveConfig)
 	if err != nil {
@@ -370,6 +370,19 @@ func updateSettings(saveConfig map[string]map[string]string) error {
 		// authConfig now was prevConfig
 		// saveConfig is to be saved, so authConfig should get added values from saveConfig
 		log.Debugf("Previous saved auth config: %v", authConfig)
+		// If saveConfig (updated config) does not have secret settings, but authConfig(previous config does), restore the secret settings
+		prevProviderSettings, prevProviderPresent := authConfig[providerName]
+		updatedProviderSettings, updatedProviderPresent := saveConfig[providerName]
+		if prevProviderPresent && updatedProviderPresent {
+			for _, s := range secretSettings {
+				_, prevPresent := prevProviderSettings[s]
+				_, updatedPresent := updatedProviderSettings[s]
+				if prevPresent && !updatedPresent {
+					saveConfig[providerName][s] = authConfig[providerName][s]
+				}
+			}
+		}
+
 		for key, val := range saveConfig {
 			authConfig[key] = val
 		}
@@ -489,7 +502,7 @@ func UpdateConfig(authConfig model.AuthConfig) error {
 
 	genObjConfig := make(map[string]map[string]string)
 	genObjConfig[newProvider.GetName()] = providerSettings
-	err = updateSettings(genObjConfig)
+	err = updateSettings(genObjConfig, newProvider.GetProviderSecretSettings(), newProvider.GetName())
 	if err != nil {
 		log.Errorf("UpdateConfig: Error Storing the provider settings %v", err)
 		return err
@@ -681,7 +694,7 @@ func UpgradeCase() error {
 
 		providerSettings = provider.GetSettings()
 		genObjConfig[provider.GetName()] = providerSettings
-		return updateSettings(genObjConfig)
+		return updateSettings(genObjConfig, provider.GetProviderSecretSettings(), provider.GetName())
 	}
 	return nil
 }
@@ -770,7 +783,7 @@ func GetConfig(accessToken string, listOnly bool) (model.AuthConfig, error) {
 					delete(providerSettings, k)
 				}
 			}
-			log.Debugf("Provider settings: %#v", providerSettings)
+			log.Debugf("Provider settings: %v", providerSettings)
 			if err != nil {
 				log.Errorf("GetConfig: Error reading provider DB settings %v", err)
 				return config, nil

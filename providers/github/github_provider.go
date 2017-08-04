@@ -315,3 +315,9 @@ func (g *GProvider) GetProviderConfigResource() interface{} {
 func (g *GProvider) CustomizeSchema(schema *v1client.Schema) *v1client.Schema {
 	return schema
 }
+
+func (g *GProvider) GetProviderSecretSettings() []string {
+	var settings []string
+	settings = append(settings, clientSecretSetting)
+	return settings
+}
