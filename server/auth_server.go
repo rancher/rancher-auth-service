@@ -37,6 +37,7 @@ const (
 	identitySeparatorSetting         = "api.auth.external.provider.identity.separator"
 	authServiceLogSetting            = "auth.service.log.level"
 	authServiceConfigUpdateTimestamp = "auth.service.config.update.timestamp"
+	noIdentityLookupSupportedSetting = "api.auth.external.provider.no.identity.lookup"
 )
 
 var (
@@ -517,6 +518,7 @@ func UpdateConfig(authConfig model.AuthConfig) error {
 	commonSettings[providerNameSetting] = authConfig.Provider
 	commonSettings[providerSetting] = authConfig.Provider
 	commonSettings[externalProviderSetting] = "true"
+	commonSettings[noIdentityLookupSupportedSetting] = strconv.FormatBool(!newProvider.IsIdentityLookupSupported())
 	err = updateCommonSettings(commonSettings)
 	if err != nil {
 		return errors.Wrap(err, "UpdateConfig: Error Storing the common settings")
@@ -601,6 +603,7 @@ func UpgradeSettings() error {
 			commonSettings[allowedIdentitiesSetting] = dbLegacySettings[legacySettingsMap["allowedIdentitiesSetting"]]
 			commonSettings[providerNameSetting] = providerNameInDb
 			commonSettings[externalProviderSetting] = "true"
+			commonSettings[noIdentityLookupSupportedSetting] = strconv.FormatBool(!newProvider.IsIdentityLookupSupported())
 
 			err = updateCommonSettings(commonSettings)
 			if err != nil {

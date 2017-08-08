@@ -321,3 +321,7 @@ func (g *GProvider) GetProviderSecretSettings() []string {
 	settings = append(settings, clientSecretSetting)
 	return settings
 }
+
+func (g *GProvider) IsIdentityLookupSupported() bool {
+	return true
+}

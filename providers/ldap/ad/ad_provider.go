@@ -350,3 +350,7 @@ func getAllowedIDString(allowedIdentities []client.Identity, separator string) s
 	}
 	return ""
 }
+
+func (a *ADProvider) IsIdentityLookupSupported() bool {
+	return true
+}
