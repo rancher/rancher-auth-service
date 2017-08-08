@@ -12,20 +12,19 @@ import (
 
 //Constants for shibboleth
 const (
-	Name                             = "shibboleth"
-	Config                           = Name + "config"
-	TokenType                        = Name + "jwt"
-	UserType                         = Name + "_user"
-	GroupType                        = Name + "_group"
-	idpMetadataURLSetting            = "api.auth.shibboleth.idp.metadata.url"
-	spSelfSignedCertSetting          = "api.auth.shibboleth.sp.self.signed.cert"
-	spSelfSignedKeySetting           = "api.auth.shibboleth.sp.self.signed.key"
-	groupsFieldSetting               = "api.auth.shibboleth.groups.field"
-	displayNameSetting               = "api.auth.shibboleth.displayname.field"
-	userNameSetting                  = "api.auth.shibboleth.username.field"
-	uidSetting                       = "api.auth.shibboleth.object.uid.field"
-	idpMetadataContentSetting        = "api.auth.shibboleth.idp.metadata.content"
-	noIdentityLookupSupportedSetting = "api.auth.external.provider.no.identity.lookup"
+	Name                      = "shibboleth"
+	Config                    = Name + "config"
+	TokenType                 = Name + "jwt"
+	UserType                  = Name + "_user"
+	GroupType                 = Name + "_group"
+	idpMetadataURLSetting     = "api.auth.shibboleth.idp.metadata.url"
+	spSelfSignedCertSetting   = "api.auth.shibboleth.sp.self.signed.cert"
+	spSelfSignedKeySetting    = "api.auth.shibboleth.sp.self.signed.key"
+	groupsFieldSetting        = "api.auth.shibboleth.groups.field"
+	displayNameSetting        = "api.auth.shibboleth.displayname.field"
+	userNameSetting           = "api.auth.shibboleth.username.field"
+	uidSetting                = "api.auth.shibboleth.object.uid.field"
+	idpMetadataContentSetting = "api.auth.shibboleth.idp.metadata.content"
 )
 
 func init() {
@@ -217,7 +216,6 @@ func (s *SProvider) GetSettings() map[string]string {
 	if s.shibClient.config.IDPMetadataContent != "" {
 		settings[idpMetadataContentSetting] = s.shibClient.config.IDPMetadataContent
 	}
-	settings[noIdentityLookupSupportedSetting] = "true"
 
 	return settings
 }
@@ -231,7 +229,6 @@ func (s *SProvider) GetProviderSettingList(listOnly bool) []string {
 	settings = append(settings, displayNameSetting)
 	settings = append(settings, userNameSetting)
 	settings = append(settings, uidSetting)
-	settings = append(settings, noIdentityLookupSupportedSetting)
 	if !listOnly {
 		settings = append(settings, spSelfSignedKeySetting)
 		settings = append(settings, idpMetadataContentSetting)
@@ -292,4 +289,8 @@ func (s *SProvider) GetProviderSecretSettings() []string {
 	settings = append(settings, spSelfSignedKeySetting)
 	settings = append(settings, idpMetadataContentSetting)
 	return settings
+}
+
+func (s *SProvider) IsIdentityLookupSupported() bool {
+	return false
 }

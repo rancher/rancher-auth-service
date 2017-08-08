@@ -38,6 +38,7 @@ type IdentityProvider interface {
 	GetProviderConfigResource() interface{}
 	CustomizeSchema(schema *v1client.Schema) *v1client.Schema
 	GetProviderSecretSettings() []string
+	IsIdentityLookupSupported() bool
 }
 
 //GetProvider returns an instance of an identyityProvider by name
