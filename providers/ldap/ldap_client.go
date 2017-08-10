@@ -23,6 +23,7 @@ type LClient struct {
 	SearchConfig      *SearchConfig
 	AccessMode        string
 	AllowedIdentities string
+	Enabled           bool
 }
 
 type SearchConfig struct {
@@ -84,12 +85,12 @@ func (l *LClient) newConn() (*ldap.Conn, error) {
 		tlsConfig = &tls.Config{RootCAs: l.ConstantsConfig.CAPool, InsecureSkipVerify: false, ServerName: l.Config.Server}
 		lConn, err = ldap.DialTLS("tcp", fmt.Sprintf("%s:%d", searchConfig.Server, searchConfig.Port), tlsConfig)
 		if err != nil {
-			return nil, fmt.Errorf("Error %v creating ssl connection", err)
+			return nil, fmt.Errorf("Error creating ssl connection: %v", err)
 		}
 	} else {
 		lConn, err = ldap.Dial("tcp", fmt.Sprintf("%s:%d", searchConfig.Server, searchConfig.Port))
 		if err != nil {
-			return nil, fmt.Errorf("Error %v creating connection", err)
+			return nil, fmt.Errorf("Error creating connection: %v", err)
 		}
 	}
 
@@ -120,6 +121,21 @@ func (l *LClient) GenerateToken(jsonInput map[string]string) (model.Token, int, 
 	if err != nil {
 		return nilToken, status, err
 	}
+
+	if !l.Enabled {
+		log.Debugf("Bind service account username password")
+		sausername := getUserExternalID(l.SearchConfig.BindDN, l.Config.LoginDomain)
+		err = lConn.Bind(sausername, l.SearchConfig.BindPassword)
+
+		if err != nil {
+			if ldap.IsErrorWithCode(err, ldap.LDAPResultInvalidCredentials) {
+				status = 401
+			}
+			defer lConn.Close()
+			return nilToken, status, fmt.Errorf("Error in ldap bind of service account: %v", err)
+		}
+	}
+
 	log.Debug("Binding username password")
 	err = lConn.Bind(externalID, password)
 
@@ -127,7 +143,7 @@ func (l *LClient) GenerateToken(jsonInput map[string]string) (model.Token, int, 
 		if ldap.IsErrorWithCode(err, ldap.LDAPResultInvalidCredentials) {
 			status = 401
 		}
-		return nilToken, status, fmt.Errorf("Error %v in ldap bind", err)
+		return nilToken, status, fmt.Errorf("Error in ldap bind: %v", err)
 	}
 	defer lConn.Close()
 	samName := username
@@ -594,25 +610,35 @@ func (l *LClient) TestLogin(testAuthConfig *model.TestAuthConfig) (int, error) {
 		tlsConfig := &tls.Config{RootCAs: l.ConstantsConfig.CAPool, InsecureSkipVerify: false, ServerName: ldapServer}
 		lConn, err = ldap.DialTLS("tcp", fmt.Sprintf("%s:%d", ldapServer, ldapPort), tlsConfig)
 		if err != nil {
-			return status, fmt.Errorf("Error %v creating ssl connection", err)
+			return status, fmt.Errorf("Error creating ssl connection: %v", err)
 		}
 	} else {
 		lConn, err = ldap.Dial("tcp", fmt.Sprintf("%s:%d", ldapServer, ldapPort))
 		if err != nil {
-			return status, fmt.Errorf("Error %v creating connection", err)
+			return status, fmt.Errorf("Error creating connection: %v", err)
 		}
 	}
 
 	lConn.SetTimeout(time.Duration(testAuthConfig.AuthConfig.LdapConfig.ConnectionTimeout) * time.Second)
 	defer lConn.Close()
 
-	log.Info("Binding username password")
+	log.Debugf("Binding service account username password")
+	sausername := getUserExternalID(testAuthConfig.AuthConfig.LdapConfig.ServiceAccountUsername, testAuthConfig.AuthConfig.LdapConfig.LoginDomain)
+	err = lConn.Bind(sausername, testAuthConfig.AuthConfig.LdapConfig.ServiceAccountPassword)
+	if err != nil {
+		if ldap.IsErrorWithCode(err, ldap.LDAPResultInvalidCredentials) {
+			status = 401
+		}
+		return status, fmt.Errorf("Error in ldap bind for service account: %v", err)
+	}
+
+	log.Debugf("Binding username password")
 	err = lConn.Bind(externalID, password)
 	if err != nil {
 		if ldap.IsErrorWithCode(err, ldap.LDAPResultInvalidCredentials) {
 			status = 401
 		}
-		return status, fmt.Errorf("Error %v in ldap bind", err)
+		return status, fmt.Errorf("Error in ldap bind: %v", err)
 	}
 
 	return status, nil
