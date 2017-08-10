@@ -248,6 +248,7 @@ func (a *ADProvider) LoadConfig(authConfig *model.AuthConfig) error {
 	a.LdapClient.AllowedIdentities = getAllowedIDString(authConfig.AllowedIdentities, a.GetIdentitySeparator())
 	a.LdapClient.ConstantsConfig = adConstantsConfig
 	a.LdapClient.SearchConfig = a.LdapClient.InitializeSearchConfig()
+	a.LdapClient.Enabled = authConfig.Enabled
 	return nil
 }
 
