@@ -125,6 +125,7 @@ func addRouteHandler(handler http.Handler, name string) {
 
 //ReturnHTTPError handles sending out CatalogError response
 func ReturnHTTPError(w http.ResponseWriter, r *http.Request, httpStatus int, errorMessage string) {
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(httpStatus)
 
 	err := model.AuthServiceError{
