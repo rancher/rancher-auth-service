@@ -323,13 +323,29 @@ func (l *LClient) GetIdentity(distinguishedName string, scope string) (client.Id
 		return nilIdentity, fmt.Errorf("Error %v creating connection", err)
 	}
 	// Bind before query
+	// If service acc bind fails, and auth is on, return identity formed using DN
 	serviceAccountUsername := getUserExternalID(l.Config.ServiceAccountUsername, l.Config.LoginDomain)
 	err = lConn.Bind(serviceAccountUsername, l.Config.ServiceAccountPassword)
+	defer lConn.Close()
 	if err != nil {
-		return nilIdentity, fmt.Errorf("Error %v in ldap bind", err)
+		if ldap.IsErrorWithCode(err, ldap.LDAPResultInvalidCredentials) && l.Enabled {
+			user := strings.EqualFold(c.UserScope, scope)
+			identity := &client.Identity{
+				Resource: client.Resource{
+					Type: "identity",
+				},
+				ExternalIdType: scope,
+				ExternalId:     distinguishedName,
+				Name:           distinguishedName,
+				Login:          distinguishedName,
+				User:           user,
+			}
+			identity.Resource.Id = scope + ":" + distinguishedName
+			return *identity, nil
+		}
+		return nilIdentity, fmt.Errorf("Error in ldap bind: %v", err)
 	}
 
-	defer lConn.Close()
 	if strings.EqualFold(c.UserScope, scope) {
 		search = ldap.NewSearchRequest(distinguishedName,
 			ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
