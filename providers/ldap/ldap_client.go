@@ -123,7 +123,11 @@ func (l *LClient) GenerateToken(jsonInput map[string]string) (model.Token, int, 
 	}
 
 	if !l.Enabled {
-		log.Debugf("Bind service account username password")
+		log.Debug("Bind service account username password")
+		if l.SearchConfig.BindPassword == "" {
+			status = 401
+			return nilToken, status, fmt.Errorf("Failed to login, service account password not provided")
+		}
 		sausername := getUserExternalID(l.SearchConfig.BindDN, l.Config.LoginDomain)
 		err = lConn.Bind(sausername, l.SearchConfig.BindPassword)
 
@@ -176,7 +180,7 @@ func (l *LClient) getIdentitiesFromSearchResult(result *ldap.SearchResult) ([]cl
 	// getIdentities(SearchResult result): ADIdentityProvider
 	c := l.ConstantsConfig
 	entry := result.Entries[0]
-	if !l.hasPermission(entry.Attributes) {
+	if !l.hasPermission(entry.Attributes, l.Config) {
 		return []client.Identity{}, fmt.Errorf("Permission denied")
 	}
 
@@ -311,7 +315,7 @@ func (l *LClient) GetIdentity(distinguishedName string, scope string) (client.Id
 		}
 	}
 
-	if !isType(attribs, scope) && !l.hasPermission(attribs) {
+	if !isType(attribs, scope) && !l.hasPermission(attribs, l.Config) {
 		log.Errorf("Failed to get object %s", distinguishedName)
 		return nilIdentity, nil
 	}
@@ -355,7 +359,7 @@ func (l *LClient) GetIdentity(distinguishedName string, scope string) (client.Id
 
 	entry := result.Entries[0]
 	entryAttributes := entry.Attributes
-	if !l.hasPermission(entry.Attributes) {
+	if !l.hasPermission(entry.Attributes, l.Config) {
 		return nilIdentity, fmt.Errorf("Permission denied")
 	}
 
@@ -590,11 +594,12 @@ func escapeLDAPSearchFilter(filter string) string {
 	return buf.String()
 }
 
-func (l *LClient) TestLogin(testAuthConfig *model.TestAuthConfig) (int, error) {
-	log.Info("Now generating Ldap token")
+func (l *LClient) TestLogin(testAuthConfig *model.TestAuthConfig, accessToken string) (int, error) {
 	var lConn *ldap.Conn
 	var err error
 	var status int
+	status = 500
+
 	split := strings.Split(testAuthConfig.Code, ":")
 	username, password := split[0], split[1]
 	externalID := getUserExternalID(username, testAuthConfig.AuthConfig.LdapConfig.LoginDomain)
@@ -605,7 +610,7 @@ func (l *LClient) TestLogin(testAuthConfig *model.TestAuthConfig) (int, error) {
 
 	ldapServer := testAuthConfig.AuthConfig.LdapConfig.Server
 	ldapPort := testAuthConfig.AuthConfig.LdapConfig.Port
-	log.Info("Now creating Ldap connection")
+	log.Debug("TestLogin: Now creating Ldap connection")
 	if testAuthConfig.AuthConfig.LdapConfig.TLS {
 		tlsConfig := &tls.Config{RootCAs: l.ConstantsConfig.CAPool, InsecureSkipVerify: false, ServerName: ldapServer}
 		lConn, err = ldap.DialTLS("tcp", fmt.Sprintf("%s:%d", ldapServer, ldapPort), tlsConfig)
@@ -622,7 +627,12 @@ func (l *LClient) TestLogin(testAuthConfig *model.TestAuthConfig) (int, error) {
 	lConn.SetTimeout(time.Duration(testAuthConfig.AuthConfig.LdapConfig.ConnectionTimeout) * time.Second)
 	defer lConn.Close()
 
-	log.Debugf("Binding service account username password")
+	if testAuthConfig.AuthConfig.LdapConfig.ServiceAccountPassword == "" {
+		status = 401
+		return status, fmt.Errorf("Failed to login, service account password not provided")
+	}
+
+	log.Debug("TestLogin: Binding service account username password")
 	sausername := getUserExternalID(testAuthConfig.AuthConfig.LdapConfig.ServiceAccountUsername, testAuthConfig.AuthConfig.LdapConfig.LoginDomain)
 	err = lConn.Bind(sausername, testAuthConfig.AuthConfig.LdapConfig.ServiceAccountPassword)
 	if err != nil {
@@ -632,13 +642,58 @@ func (l *LClient) TestLogin(testAuthConfig *model.TestAuthConfig) (int, error) {
 		return status, fmt.Errorf("Error in ldap bind for service account: %v", err)
 	}
 
-	log.Debugf("Binding username password")
+	log.Debug("TestLogin: Binding username password")
 	err = lConn.Bind(externalID, password)
 	if err != nil {
 		if ldap.IsErrorWithCode(err, ldap.LDAPResultInvalidCredentials) {
 			status = 401
 		}
 		return status, fmt.Errorf("Error in ldap bind: %v", err)
+	}
+
+	samName := username
+	if strings.Contains(username, "\\") {
+		samName = strings.SplitN(username, "\\\\", 2)[1]
+	}
+	query := "(" + testAuthConfig.AuthConfig.LdapConfig.UserLoginField + "=" + samName + ")"
+	log.Debugf("LDAP Search query: {%s}", query)
+
+	testUserSearchAttributes := []string{l.ConstantsConfig.MemberOfAttribute, l.ConstantsConfig.ObjectClassAttribute,
+		testAuthConfig.AuthConfig.LdapConfig.UserObjectClass, testAuthConfig.AuthConfig.LdapConfig.UserLoginField,
+		testAuthConfig.AuthConfig.LdapConfig.UserNameField, testAuthConfig.AuthConfig.LdapConfig.UserSearchField,
+		testAuthConfig.AuthConfig.LdapConfig.UserEnabledAttribute}
+
+	search := ldap.NewSearchRequest(testAuthConfig.AuthConfig.LdapConfig.Domain,
+		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
+		query, testUserSearchAttributes, nil)
+
+	result, err := lConn.Search(search)
+	if err != nil {
+		return status, fmt.Errorf("Error searching the user information with new server settings: %v", err)
+	}
+
+	if len(result.Entries) < 1 {
+		return status, fmt.Errorf("Cannot locate the user information with new server settings")
+	} else if len(result.Entries) > 1 {
+		return status, fmt.Errorf("Multiple users found for the username with new server settings")
+	}
+
+	entry := result.Entries[0]
+	if !l.hasPermission(entry.Attributes, &testAuthConfig.AuthConfig.LdapConfig) {
+		return status, fmt.Errorf("User is probably disabled in the new server settings")
+	}
+
+	userIdentity, err := l.attributesToIdentity(entry.Attributes, entry.DN, l.ConstantsConfig.UserScope)
+	if err != nil {
+		return status, fmt.Errorf("Error reading the user information with new server settings: %v", err)
+	}
+
+	if userIdentity == nil {
+		return status, fmt.Errorf("Cannot search user information with new server settings")
+	}
+
+	if userIdentity.ExternalId != accessToken {
+		return status, fmt.Errorf("Mismatch in ExternalId of the Admin account, with new server settings")
 	}
 
 	return status, nil
@@ -653,13 +708,13 @@ func getUserExternalID(username string, loginDomain string) string {
 	return username
 }
 
-func (l *LClient) hasPermission(attributes []*ldap.EntryAttribute) bool {
+func (l *LClient) hasPermission(attributes []*ldap.EntryAttribute, config *model.LdapConfig) bool {
 	var permission int64
-	if !isType(attributes, l.Config.UserObjectClass) {
+	if !isType(attributes, config.UserObjectClass) {
 		return true
 	}
 	for _, attr := range attributes {
-		if attr.Name == l.Config.UserEnabledAttribute {
+		if attr.Name == config.UserEnabledAttribute {
 			if len(attr.Values) > 0 && attr.Values[0] != "" {
 				intAttr, err := strconv.ParseInt(attr.Values[0], 10, 64)
 				if err != nil {
@@ -672,8 +727,8 @@ func (l *LClient) hasPermission(attributes []*ldap.EntryAttribute) bool {
 			}
 		}
 	}
-	permission = permission & l.Config.UserDisabledBitMask
-	return permission != l.Config.UserDisabledBitMask
+	permission = permission & config.UserDisabledBitMask
+	return permission != config.UserDisabledBitMask
 }
 
 func (l *LClient) RefreshToken(json map[string]string) (model.Token, int, error) {

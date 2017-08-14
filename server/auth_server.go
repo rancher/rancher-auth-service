@@ -1058,7 +1058,7 @@ func IsSamlJWTValid(value string) (bool, map[string][]string) {
 	return false, samlData
 }
 
-func TestLogin(testAuthConfig model.TestAuthConfig) (int, error) {
+func TestLogin(testAuthConfig model.TestAuthConfig, accessToken string) (int, error) {
 	authConfig := testAuthConfig.AuthConfig
 	newProvider, err := initProviderWithConfig(&authConfig)
 	if err != nil {
@@ -1067,7 +1067,7 @@ func TestLogin(testAuthConfig model.TestAuthConfig) (int, error) {
 	}
 
 	log.Infof("newProvider %v", newProvider.GetName())
-	status, err := newProvider.TestLogin(&testAuthConfig)
+	status, err := newProvider.TestLogin(&testAuthConfig, accessToken)
 	if err != nil {
 		log.Errorf("GetProvider: Error in login %v", err)
 		return status, err

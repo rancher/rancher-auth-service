@@ -304,7 +304,7 @@ func (g *GProvider) GetIdentitySeparator() string {
 	return ","
 }
 
-func (g *GProvider) TestLogin(testAuthConfig *model.TestAuthConfig) (int, error) {
+func (g *GProvider) TestLogin(testAuthConfig *model.TestAuthConfig, accessToken string) (int, error) {
 	return 0, nil
 }
 
