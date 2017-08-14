@@ -40,7 +40,7 @@ func CreateToken(w http.ResponseWriter, r *http.Request) {
 	accessToken := jsonInput["accessToken"]
 
 	if securityCode != "" {
-		log.Debugf("CreateToken called with securityCode %s", securityCode)
+		log.Debugf("CreateToken called with securityCode")
 		//getToken
 		token, status, err := server.CreateToken(jsonInput)
 		if err != nil {
@@ -410,6 +410,19 @@ func DoSamlLogout(w http.ResponseWriter, r *http.Request) {
 
 // TestLogin is a test API to check login with code before saving settings to db
 func TestLogin(w http.ResponseWriter, r *http.Request) {
+
+	authHeader := r.Header.Get("Authorization")
+	var accessToken string
+	// header value format will be "Bearer <token>"
+	if authHeader != "" {
+		if !strings.HasPrefix(authHeader, "Bearer ") {
+			log.Errorf("GetMyIdentities Failed to find Bearer token %v", authHeader)
+			ReturnHTTPError(w, r, http.StatusUnauthorized, "Unauthorized, please provide a valid token")
+			return
+		}
+		accessToken = strings.TrimPrefix(authHeader, "Bearer ")
+	}
+
 	bytes, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		log.Errorf("TestLogin failed with error: %v", err)
@@ -431,7 +444,7 @@ func TestLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	status, err := server.TestLogin(testAuthConfig)
+	status, err := server.TestLogin(testAuthConfig, accessToken)
 	if err != nil {
 		log.Errorf("TestLogin GetProvider failed with error: %v", err)
 		if status == 0 {

@@ -270,8 +270,8 @@ func (a *ADProvider) GetRedirectURL() string {
 	return ""
 }
 
-func (a *ADProvider) TestLogin(testAuthConfig *model.TestAuthConfig) (int, error) {
-	return a.LdapClient.TestLogin(testAuthConfig)
+func (a *ADProvider) TestLogin(testAuthConfig *model.TestAuthConfig, accessToken string) (int, error) {
+	return a.LdapClient.TestLogin(testAuthConfig, accessToken)
 }
 
 func (a *ADProvider) GetProviderConfigResource() interface{} {
