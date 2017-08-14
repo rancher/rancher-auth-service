@@ -321,7 +321,7 @@ func readCommonSettings(settings []string) (map[string]string, error) {
 	return dbSettings, nil
 }
 
-func updateSettings(saveConfig map[string]map[string]string, secretSettings []string, providerName string) error {
+func updateSettings(saveConfig map[string]map[string]string, secretSettings []string, providerName string, enabled bool) error {
 	log.Debugf("Updated auth config: %#v", saveConfig)
 	clearText, err := json.Marshal(saveConfig)
 	if err != nil {
@@ -371,15 +371,19 @@ func updateSettings(saveConfig map[string]map[string]string, secretSettings []st
 		// authConfig now was prevConfig
 		// saveConfig is to be saved, so authConfig should get added values from saveConfig
 		log.Debugf("Previous saved auth config: %v", authConfig)
-		// If saveConfig (updated config) does not have secret settings, but authConfig(previous config does), restore the secret settings
-		prevProviderSettings, prevProviderPresent := authConfig[providerName]
-		updatedProviderSettings, updatedProviderPresent := saveConfig[providerName]
-		if prevProviderPresent && updatedProviderPresent {
-			for _, s := range secretSettings {
-				_, prevPresent := prevProviderSettings[s]
-				_, updatedPresent := updatedProviderSettings[s]
-				if prevPresent && !updatedPresent {
-					saveConfig[providerName][s] = authConfig[providerName][s]
+
+		if enabled {
+			// If saveConfig (updated config) does not have secret settings, but authConfig(previous config does), restore the secret settings
+			// This is when auth is enabled but access mode is changed
+			prevProviderSettings, prevProviderPresent := authConfig[providerName]
+			updatedProviderSettings, updatedProviderPresent := saveConfig[providerName]
+			if prevProviderPresent && updatedProviderPresent {
+				for _, s := range secretSettings {
+					_, prevPresent := prevProviderSettings[s]
+					_, updatedPresent := updatedProviderSettings[s]
+					if prevPresent && !updatedPresent {
+						saveConfig[providerName][s] = authConfig[providerName][s]
+					}
 				}
 			}
 		}
@@ -503,7 +507,7 @@ func UpdateConfig(authConfig model.AuthConfig) error {
 
 	genObjConfig := make(map[string]map[string]string)
 	genObjConfig[newProvider.GetName()] = providerSettings
-	err = updateSettings(genObjConfig, newProvider.GetProviderSecretSettings(), newProvider.GetName())
+	err = updateSettings(genObjConfig, newProvider.GetProviderSecretSettings(), newProvider.GetName(), authConfig.Enabled)
 	if err != nil {
 		log.Errorf("UpdateConfig: Error Storing the provider settings %v", err)
 		return err
@@ -705,7 +709,7 @@ func UpgradeCase() error {
 
 		providerSettings = provider.GetSettings()
 		genObjConfig[provider.GetName()] = providerSettings
-		return updateSettings(genObjConfig, provider.GetProviderSecretSettings(), provider.GetName())
+		return updateSettings(genObjConfig, provider.GetProviderSecretSettings(), provider.GetName(), enabled)
 	}
 	return nil
 }
