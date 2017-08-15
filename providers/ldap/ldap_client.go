@@ -689,27 +689,27 @@ func (l *LClient) TestLogin(testAuthConfig *model.TestAuthConfig, accessToken st
 	}
 
 	if len(result.Entries) < 1 {
-		return status, fmt.Errorf("Cannot locate the user information with new server settings")
+		return status, fmt.Errorf("Authentication succeeded, but cannot locate the user information with new server schema settings")
 	} else if len(result.Entries) > 1 {
 		return status, fmt.Errorf("Multiple users found for the username with new server settings")
 	}
 
 	entry := result.Entries[0]
 	if !l.hasPermission(entry.Attributes, &testAuthConfig.AuthConfig.LdapConfig) {
-		return status, fmt.Errorf("User is probably disabled in the new server settings")
+		return status, fmt.Errorf("Authentication succeeded, but user is probably disabled in the new server settings")
 	}
 
 	userIdentity, err := l.attributesToIdentity(entry.Attributes, entry.DN, l.ConstantsConfig.UserScope)
 	if err != nil {
-		return status, fmt.Errorf("Error reading the user information with new server settings: %v", err)
+		return status, fmt.Errorf("Authentication succeeded, but error reading the user information with new server schema settings: %v", err)
 	}
 
 	if userIdentity == nil {
-		return status, fmt.Errorf("Cannot search user information with new server settings")
+		return status, fmt.Errorf("Authentication succeeded, but cannot search user information with new server settings")
 	}
 
 	if userIdentity.ExternalId != accessToken {
-		return status, fmt.Errorf("Mismatch in ExternalId of the Admin account, with new server settings")
+		return status, fmt.Errorf("Authentication succeeded, but the user returned has a different Distinguished Name than you are currently logged in to. Changing the underlying directory tree is not supported")
 	}
 
 	return status, nil
