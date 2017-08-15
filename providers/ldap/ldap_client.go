@@ -11,6 +11,7 @@ import (
 	"time"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher/v2"
 	"github.com/rancher/rancher-auth-service/model"
 	"gopkg.in/ldap.v2"
@@ -163,6 +164,21 @@ func (l *LClient) GenerateToken(jsonInput map[string]string) (model.Token, int, 
 		if len(groupFilter) > 1 {
 			groupQuery := "(&" + query + groupFilter + ")"
 			query = groupQuery
+		}
+
+		search := ldap.NewSearchRequest(l.Config.Domain,
+			ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
+			query,
+			searchConfig.UserSearchAttributes, nil)
+		result, err := lConn.Search(search)
+		if err != nil {
+			return nilToken, status, err
+		}
+
+		if len(result.Entries) < 1 {
+			return nilToken, 403, errors.Errorf("Cannot locate user information for %s", search.Filter)
+		} else if len(result.Entries) > 1 {
+			return nilToken, 403, errors.New("More than one result")
 		}
 
 	}
