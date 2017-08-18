@@ -6,6 +6,7 @@ import (
 	"github.com/rancher/rancher-auth-service/model"
 	"github.com/rancher/rancher-auth-service/providers/github"
 	ad "github.com/rancher/rancher-auth-service/providers/ldap/ad"
+	openldap "github.com/rancher/rancher-auth-service/providers/ldap/openldap"
 	"github.com/rancher/rancher-auth-service/providers/shibboleth"
 )
 
@@ -14,7 +15,7 @@ var Providers []string
 
 //RegisterProviders creates object of type driver for every request
 func RegisterProviders() {
-	Providers = []string{"githubconfig", "shibbolethconfig", "ldapconfig"}
+	Providers = []string{"githubconfig", "shibbolethconfig", "ldapconfig", "openldapconfig"}
 }
 
 //IdentityProvider interfacse defines what methods an identity provider should implement
@@ -50,6 +51,8 @@ func GetProvider(name string) (IdentityProvider, error) {
 		return shibboleth.InitializeProvider()
 	case "ldapconfig":
 		return ad.InitializeProvider()
+	case "openldapconfig":
+		return openldap.InitializeProvider()
 	default:
 		return nil, nil
 	}
@@ -63,6 +66,8 @@ func IsProviderSupported(name string) bool {
 	case "shibbolethconfig":
 		return true
 	case "ldapconfig":
+		return true
+	case "openldapconfig":
 		return true
 	default:
 		return false
