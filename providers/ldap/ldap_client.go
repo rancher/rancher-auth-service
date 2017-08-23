@@ -82,6 +82,7 @@ func (l *LClient) newConn() (*ldap.Conn, error) {
 	var err error
 	var tlsConfig *tls.Config
 	searchConfig := l.SearchConfig
+	ldap.DefaultTimeout = time.Duration(l.Config.ConnectionTimeout) * time.Millisecond
 	if l.Config.TLS {
 		tlsConfig = &tls.Config{RootCAs: l.ConstantsConfig.CAPool, InsecureSkipVerify: false, ServerName: l.Config.Server}
 		lConn, err = ldap.DialTLS("tcp", fmt.Sprintf("%s:%d", searchConfig.Server, searchConfig.Port), tlsConfig)
@@ -95,7 +96,7 @@ func (l *LClient) newConn() (*ldap.Conn, error) {
 		}
 	}
 
-	lConn.SetTimeout(time.Duration(l.Config.ConnectionTimeout) * time.Second)
+	lConn.SetTimeout(time.Duration(l.Config.ConnectionTimeout) * time.Millisecond)
 
 	return lConn, nil
 }

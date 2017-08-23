@@ -168,7 +168,7 @@ func (a *ADProvider) AddProviderConfig(authConfig *model.AuthConfig, providerSet
 	connectionTimeout, err := strconv.ParseInt(providerSettings[TimeoutSetting], 10, 64)
 	if err != nil {
 		log.Errorf("Error in updating config %v", err)
-		ldapConfig.ConnectionTimeout = 5
+		ldapConfig.ConnectionTimeout = 5000
 	} else {
 		ldapConfig.ConnectionTimeout = connectionTimeout
 	}
@@ -320,7 +320,7 @@ func (a *ADProvider) CustomizeSchema(schema *v1client.Schema) *v1client.Schema {
 	schema.ResourceFields["userEnabledAttribute"] = userEnabledAttribute
 
 	connectionTimeout := schema.ResourceFields["connectionTimeout"]
-	connectionTimeout.Default = 5
+	connectionTimeout.Default = 5000
 	schema.ResourceFields["connectionTimeout"] = connectionTimeout
 
 	groupDNField := schema.ResourceFields["groupDNField"]
