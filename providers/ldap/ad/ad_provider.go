@@ -85,6 +85,7 @@ func (a *ADProvider) GetUserType() string {
 }
 
 func (a *ADProvider) GenerateToken(jsonInput map[string]string) (model.Token, int, error) {
+	jsonInput["provider"] = Config
 	return a.LdapClient.GenerateToken(jsonInput)
 }
 
@@ -232,6 +233,7 @@ func (a *ADProvider) GetConfig() model.AuthConfig {
 	}
 
 	log.Debug("In LDAP authConfig %v", authConfig)
+
 	return authConfig
 }
 
@@ -254,6 +256,7 @@ func (a *ADProvider) LoadConfig(authConfig *model.AuthConfig) error {
 
 //RefreshToken re-authenticates and generate a new token
 func (a *ADProvider) RefreshToken(json map[string]string) (model.Token, int, error) {
+	json["provider"] = Config
 	return a.LdapClient.RefreshToken(json)
 }
 

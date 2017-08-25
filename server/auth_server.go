@@ -174,6 +174,7 @@ func initProviderWithConfig(authConfig *model.AuthConfig) (providers.IdentityPro
 	if newProvider == nil {
 		return nil, fmt.Errorf("Could not get the %s auth provider", authConfig.Provider)
 	}
+
 	err = newProvider.LoadConfig(authConfig)
 	if err != nil {
 		log.Debugf("Error Loading the provider config %v", err)
@@ -504,7 +505,6 @@ func UpdateConfig(authConfig model.AuthConfig) error {
 	log.Infof("newProvider %v", newProvider.GetName())
 
 	providerSettings := newProvider.GetSettings()
-
 	genObjConfig := make(map[string]map[string]string)
 	genObjConfig[newProvider.GetName()] = providerSettings
 	err = updateSettings(genObjConfig, newProvider.GetProviderSecretSettings(), newProvider.GetName(), authConfig.Enabled)
@@ -840,7 +840,6 @@ func Reload(fromUpdate bool) (bool, error) {
 		}
 
 		log.Infof("Auth provider configured %v", authConfig.Provider)
-
 		newProvider, err := initProviderWithConfig(&authConfig)
 		if err != nil {
 			log.Errorf("Error initializing the provider %v", err)

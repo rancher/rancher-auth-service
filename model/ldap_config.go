@@ -19,6 +19,7 @@ type LdapConfig struct {
 	UserObjectClass             string `json:"userObjectClass"`
 	UserNameField               string `json:"userNameField"`
 	UserEnabledAttribute        string `json:"userEnabledAttribute"`
+	UserMemberAttribute         string `json:"userMemberAttribute"`
 	GroupSearchField            string `json:"groupSearchField"`
 	GroupObjectClass            string `json:"groupObjectClass"`
 	GroupNameField              string `json:"groupNameField"`
