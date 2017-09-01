@@ -176,6 +176,7 @@ func (l *LClient) GenerateToken(jsonInput map[string]string) (model.Token, int, 
 			return nilToken, status, err
 		}
 
+		l.logResult(result, "GenerateToken")
 		if len(result.Entries) < 1 {
 			return nilToken, 403, errors.Errorf("Cannot locate user information for %s", search.Filter)
 		} else if len(result.Entries) > 1 {
@@ -190,7 +191,7 @@ func (l *LClient) GenerateToken(jsonInput map[string]string) (model.Token, int, 
 		query,
 		searchConfig.UserSearchAttributes, nil)
 
-	return l.userRecord(search, lConn)
+	return l.userRecord(search, lConn, "GenerateToken")
 }
 
 func (l *LClient) getIdentitiesFromSearchResult(result *ldap.SearchResult) ([]client.Identity, error) {
@@ -375,12 +376,12 @@ func (l *LClient) GetIdentity(distinguishedName string, scope string) (client.Id
 
 	if strings.EqualFold(c.UserScope, scope) {
 		search = ldap.NewSearchRequest(distinguishedName,
-			ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
+			ldap.ScopeBaseObject, ldap.NeverDerefAliases, 0, 0, false,
 			filter,
 			searchConfig.UserSearchAttributes, nil)
 	} else {
 		search = ldap.NewSearchRequest(distinguishedName,
-			ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
+			ldap.ScopeBaseObject, ldap.NeverDerefAliases, 0, 0, false,
 			filter,
 			searchConfig.GroupSeachAttributes, nil)
 	}
@@ -390,6 +391,7 @@ func (l *LClient) GetIdentity(distinguishedName string, scope string) (client.Id
 		return nilIdentity, fmt.Errorf("Error %v in search query : %v", err, filter)
 	}
 
+	l.logResult(result, "GetIdentity")
 	if len(result.Entries) < 1 {
 		return nilIdentity, fmt.Errorf("No identities can be retrieved")
 	} else if len(result.Entries) > 1 {
@@ -711,6 +713,7 @@ func (l *LClient) TestLogin(testAuthConfig *model.TestAuthConfig, accessToken st
 		return status, fmt.Errorf("Error searching the user information with new server settings: %v", err)
 	}
 
+	l.logResult(result, "TestLogin")
 	if len(result.Entries) < 1 {
 		return status, fmt.Errorf("Authentication succeeded, but cannot locate the user information with new server schema settings")
 	} else if len(result.Entries) > 1 {
@@ -776,7 +779,7 @@ func (l *LClient) RefreshToken(json map[string]string) (model.Token, int, error)
 	query := "(" + c.ObjectClassAttribute + "=" + l.Config.UserObjectClass + ")"
 
 	search := ldap.NewSearchRequest(json["accessToken"],
-		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
+		ldap.ScopeBaseObject, ldap.NeverDerefAliases, 0, 0, false,
 		query,
 		searchConfig.UserSearchAttributes, nil)
 
@@ -796,16 +799,19 @@ func (l *LClient) RefreshToken(json map[string]string) (model.Token, int, error)
 	}
 	defer lConn.Close()
 
-	return l.userRecord(search, lConn)
+	return l.userRecord(search, lConn, "RefreshToken")
 }
 
-func (l *LClient) userRecord(search *ldap.SearchRequest, lConn *ldap.Conn) (model.Token, int, error) {
+func (l *LClient) userRecord(search *ldap.SearchRequest, lConn *ldap.Conn, name string) (model.Token, int, error) {
 	var status int
 	c := l.ConstantsConfig
 	result, err := lConn.Search(search)
 	if err != nil {
 		return nilToken, status, err
 	}
+
+	method := "userRecord+" + name
+	l.logResult(result, method)
 
 	if len(result.Entries) < 1 {
 		log.Errorf("Cannot locate user information for %s", search.Filter)
@@ -832,4 +838,24 @@ func (l *LClient) userRecord(search *ldap.SearchRequest, lConn *ldap.Conn) (mode
 	token.ExternalAccountID = userIdentity.ExternalId
 	token.AccessToken = userIdentity.ExternalId
 	return token, status, nil
+}
+
+func (l *LClient) logResult(result *ldap.SearchResult, name string) {
+	if log.GetLevel() != log.DebugLevel {
+		return
+	}
+	for idx, e := range result.Entries {
+		buffer := bytes.Buffer{}
+		for _, v := range e.Attributes {
+			buffer.WriteString(v.Name)
+			buffer.WriteString(":[")
+			for i := 0; i < (len(v.Values) - 1); i++ {
+				buffer.WriteString(v.Values[i])
+				buffer.WriteString(" ")
+			}
+			buffer.WriteString(v.Values[len(v.Values)-1])
+			buffer.WriteString("] ")
+		}
+		log.Debugf("(%s) Query Result %v: DN: %v, Attributes: %v", name, idx, e.DN, buffer.String())
+	}
 }
