@@ -179,6 +179,21 @@ func (l *LClient) GenerateToken(jsonInput map[string]string) (model.Token, int, 
 		if len(result.Entries) < 1 {
 			return nilToken, 403, errors.Errorf("Cannot locate user information for %s", search.Filter)
 		} else if len(result.Entries) > 1 {
+			log.Info("DEBUGGING-AD (GenerateToken) Found more than one result")
+			for idx, e := range result.Entries {
+				buffer := bytes.Buffer{}
+				for _, v := range e.Attributes {
+					buffer.WriteString(v.Name)
+					buffer.WriteString(":[")
+					for i := 0; i < (len(v.Values) - 1); i++ {
+						buffer.WriteString(v.Values[i])
+						buffer.WriteString(" ")
+					}
+					buffer.WriteString(v.Values[len(v.Values)-1])
+					buffer.WriteString("] ")
+				}
+				log.Infof("DEBUGGING-AD (GenerateToken) Query Result %v: DN: %v, Attributes: %v", idx, e.DN, buffer.String())
+			}
 			return nilToken, 403, errors.New("More than one result")
 		}
 
@@ -387,6 +402,21 @@ func (l *LClient) GetIdentity(distinguishedName string, scope string) (client.Id
 	if len(result.Entries) < 1 {
 		return nilIdentity, fmt.Errorf("No identities can be retrieved")
 	} else if len(result.Entries) > 1 {
+		log.Info("DEBUGGING-AD (GetIdentity) Found more than one result")
+		for idx, e := range result.Entries {
+			buffer := bytes.Buffer{}
+			for _, v := range e.Attributes {
+				buffer.WriteString(v.Name)
+				buffer.WriteString(":[")
+				for i := 0; i < (len(v.Values) - 1); i++ {
+					buffer.WriteString(v.Values[i])
+					buffer.WriteString(" ")
+				}
+				buffer.WriteString(v.Values[len(v.Values)-1])
+				buffer.WriteString("] ")
+			}
+			log.Infof("DEBUGGING-AD (GetIdentity) Query Result %v: DN: %v, Attributes: %v", idx, e.DN, buffer.String())
+		}
 		return nilIdentity, fmt.Errorf("More than one result found")
 	}
 
@@ -449,6 +479,7 @@ func (l *LClient) attributesToIdentity(attribs []*ldap.EntryAttribute, dnStr str
 		return nil, nil
 	}
 
+	log.Infof("DEBUGGING-AD (attributesToIdentity) Login: %v", login)
 	identity := &client.Identity{
 		Resource: client.Resource{
 			Type: "identity",
@@ -767,13 +798,15 @@ func (l *LClient) hasPermission(attributes []*ldap.EntryAttribute, config *model
 func (l *LClient) RefreshToken(json map[string]string) (model.Token, int, error) {
 	c := l.ConstantsConfig
 	searchConfig := l.SearchConfig
+	var status int
 	query := "(" + c.ObjectClassAttribute + "=*)"
 	search := ldap.NewSearchRequest(json["accessToken"],
 		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
 		query,
 		searchConfig.UserSearchAttributes, nil)
 
-	var status int
+	log.Infof("DEBUGGING-AD (RefreshToken) AccessToken from cattle: %v", json["accessToken"])
+
 	lConn, err := l.newConn()
 	if err != nil {
 		return nilToken, status, fmt.Errorf("Error %v creating connection", err)
@@ -794,6 +827,7 @@ func (l *LClient) RefreshToken(json map[string]string) (model.Token, int, error)
 
 func (l *LClient) userRecord(search *ldap.SearchRequest, lConn *ldap.Conn) (model.Token, int, error) {
 	var status int
+
 	c := l.ConstantsConfig
 	result, err := lConn.Search(search)
 	if err != nil {
@@ -804,6 +838,21 @@ func (l *LClient) userRecord(search *ldap.SearchRequest, lConn *ldap.Conn) (mode
 		log.Errorf("Cannot locate user information for %s", search.Filter)
 		return nilToken, status, nil
 	} else if len(result.Entries) > 1 {
+		log.Info("DEBUGGING-AD (userRecord) Found more than one result")
+		for idx, e := range result.Entries {
+			buffer := bytes.Buffer{}
+			for _, v := range e.Attributes {
+				buffer.WriteString(v.Name)
+				buffer.WriteString(":[")
+				for i := 0; i < (len(v.Values) - 1); i++ {
+					buffer.WriteString(v.Values[i])
+					buffer.WriteString(" ")
+				}
+				buffer.WriteString(v.Values[len(v.Values)-1])
+				buffer.WriteString("] ")
+			}
+			log.Infof("DEBUGGING-AD (userRecord) Query Result %v: DN: %v, Attributes: %v", idx, e.DN, buffer.String())
+		}
 		log.Error("More than one result")
 		return nilToken, status, nil
 	}

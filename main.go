@@ -2,13 +2,14 @@ package main
 
 import (
 	"fmt"
+	"net/http"
+	"os"
+
 	log "github.com/Sirupsen/logrus"
 	"github.com/rancher/rancher-auth-service/providers"
 	"github.com/rancher/rancher-auth-service/server"
 	"github.com/rancher/rancher-auth-service/service"
 	"github.com/urfave/cli"
-	"net/http"
-	"os"
 )
 
 func beforeApp(c *cli.Context) error {
@@ -117,7 +118,7 @@ func main() {
 }
 
 func StartService(c *cli.Context) {
-
+	log.Warn("DEBUGGING-AD This is a special build to debug active directory. NOT AN OFFICIAL RELEASE")
 	server.SetEnv(c)
 	providers.RegisterProviders()
 
