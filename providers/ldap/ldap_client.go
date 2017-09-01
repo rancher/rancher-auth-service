@@ -311,6 +311,7 @@ func (l *LClient) getAllowedIdentitiesFilter() (string, error) {
 func (l *LClient) GetIdentity(distinguishedName string, scope string) (client.Identity, error) {
 	//getIdentity(String distinguishedName, String scope): LDAPIdentityProvider
 	c := l.ConstantsConfig
+	var filter string
 	searchConfig := l.SearchConfig
 	var search *ldap.SearchRequest
 	if c.Scopes[0] != scope && c.Scopes[1] != scope {
@@ -337,7 +338,12 @@ func (l *LClient) GetIdentity(distinguishedName string, scope string) (client.Id
 		return nilIdentity, nil
 	}
 
-	filter := "(" + c.ObjectClassAttribute + "=*)"
+	if strings.EqualFold(c.UserScope, scope) {
+		filter = "(" + c.ObjectClassAttribute + "=" + l.Config.UserObjectClass + ")"
+	} else {
+		filter = "(" + c.ObjectClassAttribute + "=" + l.Config.GroupObjectClass + ")"
+	}
+
 	log.Debugf("Query for GetIdentity(%s): %s", distinguishedName, filter)
 	lConn, err := l.newConn()
 	if err != nil {
@@ -767,7 +773,8 @@ func (l *LClient) hasPermission(attributes []*ldap.EntryAttribute, config *model
 func (l *LClient) RefreshToken(json map[string]string) (model.Token, int, error) {
 	c := l.ConstantsConfig
 	searchConfig := l.SearchConfig
-	query := "(" + c.ObjectClassAttribute + "=*)"
+	query := "(" + c.ObjectClassAttribute + "=" + l.Config.UserObjectClass + ")"
+
 	search := ldap.NewSearchRequest(json["accessToken"],
 		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
 		query,
