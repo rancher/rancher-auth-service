@@ -110,7 +110,7 @@ func (l *LClient) GenerateToken(jsonInput map[string]string) (model.Token, int, 
 	//getIdentities: ADIdentityProvider
 	var status int
 
-	split := strings.Split(jsonInput["code"], ":")
+	split := strings.SplitN(jsonInput["code"], ":", 2)
 	username, password := split[0], split[1]
 	externalID := getUserExternalID(username, l.Config.LoginDomain)
 
