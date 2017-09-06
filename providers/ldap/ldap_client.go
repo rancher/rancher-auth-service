@@ -156,7 +156,7 @@ func (l *LClient) GenerateToken(jsonInput map[string]string) (model.Token, int, 
 	if strings.Contains(username, "\\") {
 		samName = strings.SplitN(username, "\\\\", 2)[1]
 	}
-	query := "(" + l.Config.UserLoginField + "=" + samName + ")"
+	query := "(" + l.Config.UserLoginField + "=" + ldap.EscapeFilter(samName) + ")"
 	if l.AccessMode == "required" {
 		groupFilter, err := l.getAllowedIdentitiesFilter()
 		if err != nil {
@@ -295,7 +295,7 @@ func (l *LClient) getAllowedIdentitiesFilter() (string, error) {
 		} else {
 			grpFilterArr = append(grpFilterArr, dn)
 		}
-		grpFilterArr = append(grpFilterArr, identity.ExternalId)
+		grpFilterArr = append(grpFilterArr, ldap.EscapeFilter(identity.ExternalId))
 		grpFilterArr = append(grpFilterArr, ")")
 	}
 	groupFilter := strings.Join(grpFilterArr, "")
@@ -516,7 +516,7 @@ func (l *LClient) SearchIdentities(name string, exactMatch bool) ([]client.Ident
 
 func (l *LClient) searchIdentities(name string, scope string, exactMatch bool) ([]client.Identity, error) {
 	c := l.ConstantsConfig
-	name = escapeLDAPSearchFilter(name)
+	name = ldap.EscapeFilter(name)
 	if strings.EqualFold(c.UserScope, scope) {
 		return l.searchUser(name, exactMatch)
 	} else if strings.EqualFold(c.GroupScope, scope) {
@@ -608,33 +608,6 @@ func (l *LClient) searchLdap(query string, scope string) ([]client.Identity, err
 	return identities, nil
 }
 
-func escapeLDAPSearchFilter(filter string) string {
-	buf := new(bytes.Buffer)
-	for i := 0; i < len(filter); i++ {
-		currChar := filter[i]
-		switch currChar {
-		case '\\':
-			buf.WriteString("\\5c")
-			break
-		case '*':
-			buf.WriteString("\\2a")
-			break
-		case '(':
-			buf.WriteString("\\28")
-			break
-		case ')':
-			buf.WriteString("\\29")
-			break
-		case '\u0000':
-			buf.WriteString("\\00")
-			break
-		default:
-			buf.WriteString(string(currChar))
-		}
-	}
-	return buf.String()
-}
-
 func (l *LClient) TestLogin(testAuthConfig *model.TestAuthConfig, accessToken string) (int, error) {
 	var lConn *ldap.Conn
 	var err error
@@ -696,7 +669,7 @@ func (l *LClient) TestLogin(testAuthConfig *model.TestAuthConfig, accessToken st
 	if strings.Contains(username, "\\") {
 		samName = strings.SplitN(username, "\\\\", 2)[1]
 	}
-	query := "(" + testAuthConfig.AuthConfig.LdapConfig.UserLoginField + "=" + samName + ")"
+	query := "(" + testAuthConfig.AuthConfig.LdapConfig.UserLoginField + "=" + ldap.EscapeFilter(samName) + ")"
 	log.Debugf("LDAP Search query: {%s}", query)
 
 	testUserSearchAttributes := []string{l.ConstantsConfig.MemberOfAttribute, l.ConstantsConfig.ObjectClassAttribute,
