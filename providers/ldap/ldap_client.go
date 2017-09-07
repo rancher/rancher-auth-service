@@ -166,7 +166,7 @@ func (l *LClient) GenerateToken(jsonInput map[string]string) (model.Token, int, 
 			groupQuery := "(&" + query + groupFilter + ")"
 			query = groupQuery
 		}
-
+		log.Debugf("Query for required mode: %s", query)
 		search := ldap.NewSearchRequest(l.Config.Domain,
 			ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
 			query,
@@ -285,7 +285,7 @@ func (l *LClient) GetGroupIdentity(groupDN []string, lConn *ldap.Conn) ([]client
 	filter := "(" + c.ObjectClassAttribute + "=" + l.Config.GroupObjectClass + ")"
 	query := "(|"
 	for _, attrib := range groupDN {
-		query += "(distinguishedName=" + attrib + ")"
+		query += "(distinguishedName=" + ldap.EscapeFilter(attrib) + ")"
 	}
 	query += ")"
 	query = "(&" + filter + query + ")"

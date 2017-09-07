@@ -313,7 +313,6 @@ func readSettings(provider string) (map[string]string, error) {
 			return nilSettings, err
 		}
 		for _, s := range p.GetProviderSecretSettings() {
-			log.Info("setting from secret: %s", s)
 			logSettings[s] = "****"
 		}
 	}
