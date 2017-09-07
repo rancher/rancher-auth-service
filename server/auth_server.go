@@ -302,7 +302,22 @@ func readSettings(provider string) (map[string]string, error) {
 	if err != nil {
 		return nilSettings, err
 	}
-	log.Debugf("Settings from db for provider %s: %v", provider, dbSettings)
+	logSettings := make(map[string]string)
+	for k, v := range dbSettings[provider] {
+		logSettings[k] = v
+	}
+	pName := provider + "config"
+	if providers.IsProviderSupported(pName) {
+		p, err := providers.GetProvider(pName)
+		if err != nil {
+			return nilSettings, err
+		}
+		for _, s := range p.GetProviderSecretSettings() {
+			log.Info("setting from secret: %s", s)
+			logSettings[s] = "****"
+		}
+	}
+	log.Debugf("Settings from db for provider %s: %v", provider, logSettings)
 	return dbSettings[provider], nil
 }
 
@@ -322,7 +337,6 @@ func readCommonSettings(settings []string) (map[string]string, error) {
 }
 
 func updateSettings(saveConfig map[string]map[string]string, secretSettings []string, providerName string, enabled bool) error {
-	log.Debugf("Updated auth config: %#v", saveConfig)
 	clearText, err := json.Marshal(saveConfig)
 	if err != nil {
 		return err
@@ -370,7 +384,6 @@ func updateSettings(saveConfig map[string]map[string]string, secretSettings []st
 
 		// authConfig now was prevConfig
 		// saveConfig is to be saved, so authConfig should get added values from saveConfig
-		log.Debugf("Previous saved auth config: %v", authConfig)
 
 		if enabled {
 			// If saveConfig (updated config) does not have secret settings, but authConfig(previous config does), restore the secret settings
@@ -391,7 +404,7 @@ func updateSettings(saveConfig map[string]map[string]string, secretSettings []st
 		for key, val := range saveConfig {
 			authConfig[key] = val
 		}
-		log.Debugf("Updated auth config: %v", authConfig)
+
 		clearText, err := json.Marshal(authConfig)
 		if err != nil {
 			return err
@@ -798,7 +811,6 @@ func GetConfig(accessToken string, listOnly bool) (model.AuthConfig, error) {
 					delete(providerSettings, k)
 				}
 			}
-			log.Debugf("Provider settings: %v", providerSettings)
 			if err != nil {
 				log.Errorf("GetConfig: Error reading provider DB settings %v", err)
 				return config, nil
