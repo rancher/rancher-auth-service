@@ -230,14 +230,95 @@ func (l *LClient) getIdentitiesFromSearchResult(result *ldap.SearchResult) ([]cl
 	}
 
 	if len(memberOf) != 0 {
-		for _, attrib := range memberOf {
-			identity, err := l.GetIdentity(attrib, c.GroupScope)
+		lConn, err := l.newConn()
+		if err != nil {
+			return []client.Identity{}, fmt.Errorf("Error in getIdentitiesFromSearchResult: %v", err)
+		}
+		for i := 0; i < len(memberOf); i += 50 {
+			batch := memberOf[i:min(i+50, len(memberOf))]
+			identityListBatch, err := l.GetGroupIdentity(batch, lConn)
 			if err != nil {
 				return []client.Identity{}, err
 			}
-			if !reflect.DeepEqual(identity, nilIdentity) {
-				identityList = append(identityList, identity)
+			identityList = append(identityList, identityListBatch...)
+		}
+		defer lConn.Close()
+	}
+	return identityList, nil
+}
+
+func min(a int, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func (l *LClient) GetGroupIdentity(groupDN []string, lConn *ldap.Conn) ([]client.Identity, error) {
+	c := l.ConstantsConfig
+	// Bind before query
+	// If service acc bind fails, and auth is on, return identity formed using DN
+	serviceAccountUsername := getUserExternalID(l.Config.ServiceAccountUsername, l.Config.LoginDomain)
+	err := lConn.Bind(serviceAccountUsername, l.Config.ServiceAccountPassword)
+	if err != nil {
+		if ldap.IsErrorWithCode(err, ldap.LDAPResultInvalidCredentials) && l.Enabled {
+			identityList := []client.Identity{}
+			for _, distinguishedName := range groupDN {
+				identity := &client.Identity{
+					Resource: client.Resource{
+						Type: "identity",
+					},
+					ExternalIdType: c.GroupScope,
+					ExternalId:     distinguishedName,
+					Name:           distinguishedName,
+					Login:          distinguishedName,
+					User:           false,
+				}
+				identity.Resource.Id = c.GroupScope + ":" + distinguishedName
+				identityList = append(identityList, *identity)
 			}
+			return identityList, nil
+		}
+		return []client.Identity{}, fmt.Errorf("Error in ldap bind: %v", err)
+	}
+
+	filter := "(" + c.ObjectClassAttribute + "=" + l.Config.GroupObjectClass + ")"
+	query := "(|"
+	for _, attrib := range groupDN {
+		query += "(distinguishedName=" + attrib + ")"
+	}
+	query += ")"
+	query = "(&" + filter + query + ")"
+	log.Debugf("Query for pulling user's groups: %s", query)
+	searchDomain := l.Config.Domain
+	if l.Config.GroupSearchDomain != "" {
+		searchDomain = l.Config.GroupSearchDomain
+	}
+	search := ldap.NewSearchRequest(searchDomain,
+		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
+		query,
+		l.SearchConfig.GroupSeachAttributes, nil)
+
+	result, err := lConn.Search(search)
+	if err != nil {
+		return []client.Identity{}, fmt.Errorf("Error %v in search query : %v", err, query)
+	}
+
+	l.logResult(result, "GetGroupIdentity")
+
+	identityList := []client.Identity{}
+	for _, e := range result.Entries {
+		identity, err := l.attributesToIdentity(e.Attributes, e.DN, c.GroupScope)
+		if err != nil {
+			log.Errorf("Error %v creating identity for group: %s", err, e.DN)
+			continue
+		}
+		if identity == nil {
+			log.Errorf("Group identity not returned for group: %s", e.DN)
+			continue
+		}
+		if !reflect.DeepEqual(identity, nilIdentity) {
+			identityList = append(identityList, *identity)
 		}
 	}
 	return identityList, nil
