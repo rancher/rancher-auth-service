@@ -153,8 +153,8 @@ func (l *LClient) GenerateToken(jsonInput map[string]string) (model.Token, int, 
 	}
 	defer lConn.Close()
 	samName := username
-	if strings.Contains(username, "\\") {
-		samName = strings.SplitN(username, "\\\\", 2)[1]
+	if strings.Contains(username, `\`) {
+		samName = strings.SplitN(username, `\`, 2)[1]
 	}
 	query := "(" + l.Config.UserLoginField + "=" + ldap.EscapeFilter(samName) + ")"
 	if l.AccessMode == "required" {
