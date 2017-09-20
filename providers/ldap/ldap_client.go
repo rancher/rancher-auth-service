@@ -695,7 +695,7 @@ func (l *LClient) TestLogin(testAuthConfig *model.TestAuthConfig, accessToken st
 	var status int
 	status = 500
 
-	split := strings.Split(testAuthConfig.Code, ":")
+	split := strings.SplitN(testAuthConfig.Code, ":", 2)
 	username, password := split[0], split[1]
 	externalID := getUserExternalID(username, testAuthConfig.AuthConfig.LdapConfig.LoginDomain)
 
@@ -705,6 +705,7 @@ func (l *LClient) TestLogin(testAuthConfig *model.TestAuthConfig, accessToken st
 
 	ldapServer := testAuthConfig.AuthConfig.LdapConfig.Server
 	ldapPort := testAuthConfig.AuthConfig.LdapConfig.Port
+	ldap.DefaultTimeout = time.Duration(testAuthConfig.AuthConfig.LdapConfig.ConnectionTimeout) * time.Millisecond
 	log.Debug("TestLogin: Now creating Ldap connection")
 	if testAuthConfig.AuthConfig.LdapConfig.TLS {
 		tlsConfig := &tls.Config{RootCAs: l.ConstantsConfig.CAPool, InsecureSkipVerify: false, ServerName: ldapServer}
@@ -719,7 +720,7 @@ func (l *LClient) TestLogin(testAuthConfig *model.TestAuthConfig, accessToken st
 		}
 	}
 
-	lConn.SetTimeout(time.Duration(testAuthConfig.AuthConfig.LdapConfig.ConnectionTimeout) * time.Second)
+	lConn.SetTimeout(time.Duration(testAuthConfig.AuthConfig.LdapConfig.ConnectionTimeout) * time.Millisecond)
 	defer lConn.Close()
 
 	if testAuthConfig.AuthConfig.LdapConfig.ServiceAccountPassword == "" {
@@ -747,8 +748,8 @@ func (l *LClient) TestLogin(testAuthConfig *model.TestAuthConfig, accessToken st
 	}
 
 	samName := username
-	if strings.Contains(username, "\\") {
-		samName = strings.SplitN(username, "\\\\", 2)[1]
+	if strings.Contains(username, `\`) {
+		samName = strings.SplitN(username, `\`, 2)[1]
 	}
 	query := "(" + testAuthConfig.AuthConfig.LdapConfig.UserLoginField + "=" + ldap.EscapeFilter(samName) + ")"
 	log.Debugf("LDAP Search query: {%s}", query)
