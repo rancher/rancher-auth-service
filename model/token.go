@@ -12,4 +12,9 @@ type Token struct {
 	IdentityList      []client.Identity `json:"identities"`
 	AccessToken       string
 	JwtToken          string `json:"jwt"`
+	OriginalLogin     string `json:"originalLogin"`
+}
+
+type V2Token struct {
+	Data []Token `json:"data"`
 }

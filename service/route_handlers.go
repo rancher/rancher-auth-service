@@ -412,6 +412,14 @@ func DoSamlLogout(w http.ResponseWriter, r *http.Request) {
 func TestLogin(w http.ResponseWriter, r *http.Request) {
 
 	authHeader := r.Header.Get("Authorization")
+	cookies := r.Cookies()
+	var token string
+	for _, c := range cookies {
+		if c.Name == "token" {
+			token = c.Value
+		}
+	}
+
 	var accessToken string
 	// header value format will be "Bearer <token>"
 	if authHeader != "" {
@@ -444,7 +452,7 @@ func TestLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	status, err := server.TestLogin(testAuthConfig, accessToken)
+	status, err := server.TestLogin(testAuthConfig, accessToken, token)
 	if err != nil {
 		log.Errorf("TestLogin GetProvider failed with error: %v", err)
 		if status == 0 {
