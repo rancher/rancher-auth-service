@@ -9,6 +9,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -56,6 +57,7 @@ var (
 	refreshReqChannel   *chan int
 	authConfigFile      string
 	key                 []byte
+	CattleURL           string
 )
 
 type AESSecret struct {
@@ -104,6 +106,7 @@ func SetEnv(c *cli.Context) {
 	if len(cattleURL) == 0 {
 		log.Fatalf("CATTLE_URL is not set")
 	}
+	CattleURL = cattleURL
 
 	cattleAPIKey := c.GlobalString("cattle-access-key")
 	if len(cattleAPIKey) == 0 {
@@ -1073,7 +1076,12 @@ func IsSamlJWTValid(value string) (bool, map[string][]string) {
 	return false, samlData
 }
 
-func TestLogin(testAuthConfig model.TestAuthConfig, accessToken string) (int, error) {
+func TestLogin(testAuthConfig model.TestAuthConfig, accessToken string, token string) (int, error) {
+	httpClient := &http.Client{
+		Timeout: time.Second * 10,
+	}
+
+	t := &model.V2Token{}
 	authConfig := testAuthConfig.AuthConfig
 	newProvider, err := initProviderWithConfig(&authConfig)
 	if err != nil {
@@ -1081,8 +1089,39 @@ func TestLogin(testAuthConfig model.TestAuthConfig, accessToken string) (int, er
 		return 0, err
 	}
 
+	u, err := url.Parse(CattleURL)
+	if err != nil {
+		return 0, fmt.Errorf("Error %v in parsing URL for getting token", err)
+	}
+	getURL := strings.Split(CattleURL, u.Path)[0] + "/v2-beta/token"
+
+	req, err := http.NewRequest("GET", getURL, nil)
+	if err != nil {
+		return 0, fmt.Errorf("Error %v in getting token", err)
+	}
+	req.Header.Set("Cookie", "token="+token)
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		log.Errorf("Received error from get token call: %v", err)
+		return 0, err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return 0, fmt.Errorf("Error %v in reading response body in getting token", err)
+	}
+	err = json.Unmarshal(body, &t)
+	if err != nil {
+		return 0, fmt.Errorf("Error %v in testlogin", err)
+	}
+	if len(t.Data) != 1 {
+		return 0, fmt.Errorf("Error in getting token data")
+	}
+	originalLogin := t.Data[0].OriginalLogin
+
 	log.Infof("newProvider %v", newProvider.GetName())
-	status, err := newProvider.TestLogin(&testAuthConfig, accessToken)
+	status, err := newProvider.TestLogin(&testAuthConfig, accessToken, originalLogin)
 	if err != nil {
 		log.Errorf("GetProvider: Error in login %v", err)
 		return status, err

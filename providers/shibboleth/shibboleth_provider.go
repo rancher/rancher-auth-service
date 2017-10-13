@@ -272,7 +272,7 @@ func (s *SProvider) GetIdentitySeparator() string {
 	return "#shibsaml#"
 }
 
-func (s *SProvider) TestLogin(testAuthConfig *model.TestAuthConfig, accessToken string) (int, error) {
+func (s *SProvider) TestLogin(testAuthConfig *model.TestAuthConfig, accessToken string, originalLogin string) (int, error) {
 	return 0, nil
 }
 

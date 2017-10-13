@@ -152,6 +152,7 @@ func (l *LClient) GenerateToken(jsonInput map[string]string) (model.Token, int, 
 		return nilToken, status, fmt.Errorf("Error in ldap bind: %v", err)
 	}
 	defer lConn.Close()
+	originalLogin := username
 	samName := username
 	if strings.Contains(username, `\`) {
 		samName = strings.SplitN(username, `\`, 2)[1]
@@ -191,7 +192,7 @@ func (l *LClient) GenerateToken(jsonInput map[string]string) (model.Token, int, 
 		query,
 		searchConfig.UserSearchAttributes, nil)
 
-	return l.userRecord(search, lConn, "GenerateToken")
+	return l.userRecord(search, lConn, "GenerateToken", originalLogin)
 }
 
 func (l *LClient) getIdentitiesFromSearchResult(result *ldap.SearchResult) ([]client.Identity, error) {
@@ -549,7 +550,6 @@ func (l *LClient) attributesToIdentity(attribs []*ldap.EntryAttribute, dnStr str
 		User:           user,
 	}
 	identity.Resource.Id = externalIDType + ":" + externalID
-
 	return identity, nil
 }
 
@@ -689,7 +689,7 @@ func (l *LClient) searchLdap(query string, scope string) ([]client.Identity, err
 	return identities, nil
 }
 
-func (l *LClient) TestLogin(testAuthConfig *model.TestAuthConfig, accessToken string) (int, error) {
+func (l *LClient) TestLogin(testAuthConfig *model.TestAuthConfig, accessToken string, originalLogin string) (int, error) {
 	var lConn *ldap.Conn
 	var err error
 	var status int
@@ -697,6 +697,9 @@ func (l *LClient) TestLogin(testAuthConfig *model.TestAuthConfig, accessToken st
 
 	split := strings.SplitN(testAuthConfig.Code, ":", 2)
 	username, password := split[0], split[1]
+	if username != originalLogin {
+		username = originalLogin
+	}
 	externalID := getUserExternalID(username, testAuthConfig.AuthConfig.LdapConfig.LoginDomain)
 
 	if password == "" {
@@ -854,10 +857,10 @@ func (l *LClient) RefreshToken(json map[string]string) (model.Token, int, error)
 	}
 	defer lConn.Close()
 
-	return l.userRecord(search, lConn, "RefreshToken")
+	return l.userRecord(search, lConn, "RefreshToken", "")
 }
 
-func (l *LClient) userRecord(search *ldap.SearchRequest, lConn *ldap.Conn, name string) (model.Token, int, error) {
+func (l *LClient) userRecord(search *ldap.SearchRequest, lConn *ldap.Conn, name string, originalLogin string) (model.Token, int, error) {
 	var status int
 	c := l.ConstantsConfig
 	result, err := lConn.Search(search)
@@ -892,6 +895,7 @@ func (l *LClient) userRecord(search *ldap.SearchRequest, lConn *ldap.Conn, name 
 	}
 	token.ExternalAccountID = userIdentity.ExternalId
 	token.AccessToken = userIdentity.ExternalId
+	token.OriginalLogin = originalLogin
 	return token, status, nil
 }
 
