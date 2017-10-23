@@ -1080,6 +1080,7 @@ func TestLogin(testAuthConfig model.TestAuthConfig, accessToken string, token st
 	httpClient := &http.Client{
 		Timeout: time.Second * 10,
 	}
+	var originalLogin string
 
 	t := &model.V2Token{}
 	authConfig := testAuthConfig.AuthConfig
@@ -1089,36 +1090,38 @@ func TestLogin(testAuthConfig model.TestAuthConfig, accessToken string, token st
 		return 0, err
 	}
 
-	u, err := url.Parse(CattleURL)
-	if err != nil {
-		return 0, fmt.Errorf("Error %v in parsing URL for getting token", err)
-	}
-	getURL := strings.Split(CattleURL, u.Path)[0] + "/v2-beta/token"
+	if token != "" {
+		u, err := url.Parse(CattleURL)
+		if err != nil {
+			return 0, fmt.Errorf("Error %v in parsing URL for getting token", err)
+		}
+		getURL := strings.Split(CattleURL, u.Path)[0] + "/v2-beta/token"
 
-	req, err := http.NewRequest("GET", getURL, nil)
-	if err != nil {
-		return 0, fmt.Errorf("Error %v in getting token", err)
-	}
-	req.Header.Set("Cookie", "token="+token)
+		req, err := http.NewRequest("GET", getURL, nil)
+		if err != nil {
+			return 0, fmt.Errorf("Error %v in getting token", err)
+		}
+		req.Header.Set("Cookie", "token="+token)
 
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		log.Errorf("Received error from get token call: %v", err)
-		return 0, err
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			log.Errorf("Received error from get token call: %v", err)
+			return 0, err
+		}
+		defer resp.Body.Close()
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return 0, fmt.Errorf("Error %v in reading response body in getting token", err)
+		}
+		err = json.Unmarshal(body, &t)
+		if err != nil {
+			return 0, fmt.Errorf("Error %v in testlogin", err)
+		}
+		if len(t.Data) != 1 {
+			return 0, fmt.Errorf("Error in getting token data")
+		}
+		originalLogin = t.Data[0].OriginalLogin
 	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return 0, fmt.Errorf("Error %v in reading response body in getting token", err)
-	}
-	err = json.Unmarshal(body, &t)
-	if err != nil {
-		return 0, fmt.Errorf("Error %v in testlogin", err)
-	}
-	if len(t.Data) != 1 {
-		return 0, fmt.Errorf("Error in getting token data")
-	}
-	originalLogin := t.Data[0].OriginalLogin
 
 	log.Infof("newProvider %v", newProvider.GetName())
 	status, err := newProvider.TestLogin(&testAuthConfig, accessToken, originalLogin)

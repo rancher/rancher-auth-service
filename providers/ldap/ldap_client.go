@@ -697,9 +697,11 @@ func (l *LClient) TestLogin(testAuthConfig *model.TestAuthConfig, accessToken st
 
 	split := strings.SplitN(testAuthConfig.Code, ":", 2)
 	username, password := split[0], split[1]
-	if username != originalLogin {
+
+	if username == "" {
 		username = originalLogin
 	}
+
 	externalID := getUserExternalID(username, testAuthConfig.AuthConfig.LdapConfig.LoginDomain)
 
 	if password == "" {
