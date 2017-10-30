@@ -505,28 +505,28 @@ func (l *LClient) attributesToIdentity(attribs []*ldap.EntryAttribute, dnStr str
 
 	if isType(attribs, l.Config.UserObjectClass) {
 		for _, attr := range attribs {
-			if attr.Name == l.Config.UserNameField {
+			if strings.EqualFold(attr.Name, l.Config.UserNameField) {
 				if len(attr.Values) != 0 {
 					accountName = attr.Values[0]
 				} else {
 					accountName = externalID
 				}
 			}
-			if attr.Name == l.Config.UserLoginField {
+			if strings.EqualFold(attr.Name, l.Config.UserLoginField) {
 				login = attr.Values[0]
 			}
 		}
 		user = true
 	} else if isType(attribs, l.Config.GroupObjectClass) {
 		for _, attr := range attribs {
-			if attr.Name == l.Config.GroupNameField {
+			if strings.EqualFold(attr.Name, l.Config.GroupNameField) {
 				if len(attr.Values) != 0 {
 					accountName = attr.Values[0]
 				} else {
 					accountName = externalID
 				}
 			}
-			if attr.Name == l.Config.UserLoginField {
+			if strings.EqualFold(attr.Name, l.Config.UserLoginField) {
 				if len(attr.Values) > 0 && attr.Values[0] != "" {
 					login = attr.Values[0]
 				}
