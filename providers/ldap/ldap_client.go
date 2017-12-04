@@ -344,7 +344,8 @@ func (l *LClient) savedIdentities(allowedIdentities []string) ([]client.Identity
 		split := strings.SplitN(id, ":", 2)
 		identity, err := l.GetIdentity(split[1], split[0])
 		if err != nil {
-			return identityList, err
+			log.Errorf("Error in getting identity %v: %v", id, err)
+			continue
 		}
 		if !reflect.DeepEqual(identity, nilIdentity) {
 			identityList = append(identityList, identity)
