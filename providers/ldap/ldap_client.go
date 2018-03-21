@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"encoding/base64"
 	log "github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher/v2"
@@ -695,6 +696,11 @@ func (l *LClient) TestLogin(testAuthConfig *model.TestAuthConfig, accessToken st
 	var err error
 	var status int
 	status = 500
+	tokenArray, err := base64.StdEncoding.DecodeString(accessToken)
+	if err != nil {
+		return 500, fmt.Errorf("Cannot decode access token: %s", err)
+	}
+	token := string(tokenArray[:])
 
 	split := strings.SplitN(testAuthConfig.Code, ":", 2)
 	username, password := split[0], split[1]
@@ -795,7 +801,7 @@ func (l *LClient) TestLogin(testAuthConfig *model.TestAuthConfig, accessToken st
 		return status, fmt.Errorf("Authentication succeeded, but cannot search user information with new server settings")
 	}
 
-	if userIdentity.ExternalId != accessToken {
+	if userIdentity.ExternalId != token {
 		return status, fmt.Errorf("Authentication succeeded, but the user returned has a different Distinguished Name than you are currently logged in to. Changing the underlying directory tree is not supported")
 	}
 
@@ -839,7 +845,12 @@ func (l *LClient) RefreshToken(json map[string]string) (model.Token, int, error)
 	searchConfig := l.SearchConfig
 	query := "(" + c.ObjectClassAttribute + "=" + l.Config.UserObjectClass + ")"
 
-	search := ldap.NewSearchRequest(json["accessToken"],
+	tokenArray, err := base64.StdEncoding.DecodeString(json["accessToken"])
+	if err != nil {
+		return nilToken, 500, fmt.Errorf("Cannot decode access token: %s", err)
+	}
+	accessToken := string(tokenArray[:])
+	search := ldap.NewSearchRequest(accessToken,
 		ldap.ScopeBaseObject, ldap.NeverDerefAliases, 0, 0, false,
 		query,
 		searchConfig.UserSearchAttributes, nil)
@@ -897,7 +908,7 @@ func (l *LClient) userRecord(search *ldap.SearchRequest, lConn *ldap.Conn, name 
 		return nilToken, status, fmt.Errorf("User identity not found for Ldap")
 	}
 	token.ExternalAccountID = userIdentity.ExternalId
-	token.AccessToken = userIdentity.ExternalId
+	token.AccessToken = base64.StdEncoding.EncodeToString([]byte(userIdentity.ExternalId))
 	token.OriginalLogin = originalLogin
 	return token, status, nil
 }
