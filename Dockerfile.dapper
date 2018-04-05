@@ -13,7 +13,7 @@ RUN apt-get update && \
 ENV GOLANG_ARCH_amd64=amd64 GOLANG_ARCH_arm=armv6l GOLANG_ARCH=GOLANG_ARCH_${ARCH} \
     GOPATH=/go PATH=/go/bin:/usr/local/go/bin:${PATH} SHELL=/bin/bash
 
-RUN wget -O - https://storage.googleapis.com/golang/go1.8.3.linux-${!GOLANG_ARCH}.tar.gz | tar -xzf - -C /usr/local && \
+RUN wget -O - https://storage.googleapis.com/golang/go1.10.1.linux-${!GOLANG_ARCH}.tar.gz | tar -xzf - -C /usr/local && \
     go get github.com/rancher/trash && go get github.com/golang/lint/golint
 
 ENV DOCKER_URL_amd64=https://get.docker.com/builds/Linux/x86_64/docker-1.10.3 \
@@ -23,8 +23,8 @@ ENV DOCKER_URL_amd64=https://get.docker.com/builds/Linux/x86_64/docker-1.10.3 \
 RUN wget -O - ${!DOCKER_URL} > /usr/bin/docker && chmod +x /usr/bin/docker
 
 
-RUN curl -sL ftp://xmlsoft.org/libxml2/libxml2-2.9.4.tar.gz | tar -xzf - && \
-  cd /libxml2-2.9.4 && \
+RUN curl -sL ftp://xmlsoft.org/libxml2/libxml2-2.9.7.tar.gz | tar -xzf - && \
+  cd /libxml2-2.9.7 && \
   ./configure \
     --enable-static \
     --disable-shared \
@@ -85,8 +85,8 @@ RUN \
     no-dso && \
   make depend install
 
-RUN curl -f -sL https://www.aleksey.com/xmlsec/download/xmlsec1-1.2.22.tar.gz | tar -xzf - && \
-	cd xmlsec1-1.2.22 && \
+RUN curl -f -sL https://www.aleksey.com/xmlsec/download/xmlsec1-1.2.24.tar.gz | tar -xzf - && \
+	cd xmlsec1-1.2.24 && \
 	./configure \
 		--enable-static \
 		--disable-shared \
