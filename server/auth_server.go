@@ -5,8 +5,8 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/x509"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -1046,8 +1046,8 @@ func IsSamlJWTValid(value string) (bool, map[string][]string) {
 	if provider != nil && provider.GetName() == "shibboleth" {
 		if SamlServiceProvider != nil {
 			token, err := jwt.Parse(value, func(t *jwt.Token) (interface{}, error) {
-				secretBlock, _ := pem.Decode([]byte(SamlServiceProvider.ServiceProvider.Key))
-				return secretBlock.Bytes, nil
+				secretBlock := x509.MarshalPKCS1PrivateKey(SamlServiceProvider.ServiceProvider.Key)
+				return secretBlock, nil
 			})
 			if err != nil || !token.Valid {
 				log.Infof("IsSamlJWTValid: invalid token: %s", err)
@@ -1056,15 +1056,22 @@ func IsSamlJWTValid(value string) (bool, map[string][]string) {
 
 			if claims, ok := token.Claims.(jwt.MapClaims); ok {
 				for key, values := range claims {
-					if key == "exp" {
+					if key != "attr" {
 						continue
 					}
-					valueSlice := values.([]interface{})
-					valueStrs := make([]string, len(valueSlice))
-					for i, value := range valueSlice {
-						valueStrs[i] = value.(string)
+					if attrMap, ok := values.(map[string]interface{}); ok {
+						for k, val := range attrMap {
+							valueSlice := val.([]interface{})
+							valueStrs := make([]string, len(valueSlice))
+							for i, value := range valueSlice {
+								valueStrs[i] = value.(string)
+							}
+							samlData[k] = valueStrs
+						}
+					} else {
+						log.Infof("IsSamlJWTValid: attributes not found in token")
+						return false, samlData
 					}
-					samlData[key] = valueStrs
 				}
 			} else {
 				log.Infof("IsSamlJWTValid: claims not found in token")
