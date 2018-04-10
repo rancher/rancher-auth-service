@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/crewjam/saml/samlsp"
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/v2"
 	"github.com/rancher/rancher-auth-service/model"
@@ -259,11 +260,7 @@ func HandleSamlPost(w http.ResponseWriter, r *http.Request) {
 
 	samlData := make(map[string][]string)
 
-	for key, val := range r.Header {
-		if strings.HasPrefix(key, "X-Saml-") {
-			samlData[strings.ToLower(strings.TrimPrefix(key, "X-Saml-"))] = val
-		}
-	}
+	samlData = samlsp.Token(r.Context()).Attributes
 	log.Debugf("HandleSamlPost: Received a SAML POST data %v", samlData)
 
 	//get the SAML data, create a jwt token and Redirect to ${redirectBackBase (or if not provided, api.host)}/v1-auth/saml/authtoken with query param json = map

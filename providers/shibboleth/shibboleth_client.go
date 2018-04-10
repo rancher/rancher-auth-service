@@ -2,17 +2,21 @@ package shibboleth
 
 import (
 	"bufio"
+	"crypto/rsa"
 	"crypto/tls"
+	"crypto/x509"
+	"encoding/pem"
 	"encoding/xml"
 	"fmt"
-	log "github.com/Sirupsen/logrus"
-	"github.com/crewjam/saml"
-	"github.com/crewjam/saml/samlsp"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 
+	log "github.com/Sirupsen/logrus"
+	"github.com/crewjam/saml"
+	"github.com/crewjam/saml/samlsp"
 	"github.com/rancher/rancher-auth-service/model"
 )
 
@@ -25,6 +29,9 @@ type SPClient struct {
 func (sp *SPClient) initializeSPClient(configToSet *model.ShibbolethConfig) error {
 
 	var idpURL string
+	var privKey *rsa.PrivateKey
+	var err error
+	var ok bool
 
 	sp.config = configToSet
 
@@ -63,12 +70,60 @@ func (sp *SPClient) initializeSPClient(configToSet *model.ShibbolethConfig) erro
 		}
 	}
 
+	// used from ssh.ParseRawPrivateKey
+
+	block, _ := pem.Decode([]byte(configToSet.SPSelfSignedKey))
+	if block == nil {
+		return fmt.Errorf("no key found")
+	}
+
+	if strings.Contains(block.Headers["Proc-Type"], "ENCRYPTED") {
+		return fmt.Errorf("cannot decode encrypted private keys")
+	}
+
+	switch block.Type {
+	case "RSA PRIVATE KEY":
+		privKey, err = x509.ParsePKCS1PrivateKey(block.Bytes)
+		if err != nil {
+			return fmt.Errorf("error parsing PKCS1 RSA key: %v", err)
+		}
+	case "PRIVATE KEY":
+		pk, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+		if err != nil {
+			return fmt.Errorf("error parsing PKCS8 RSA key: %v", err)
+		}
+		privKey, ok = pk.(*rsa.PrivateKey)
+		if !ok {
+			return fmt.Errorf("unable to get rsa key")
+		}
+	default:
+		return fmt.Errorf("unsupported key type %q", block.Type)
+	}
+
+	block, _ = pem.Decode([]byte(configToSet.SPSelfSignedCert))
+	if block == nil {
+		panic("failed to parse PEM block containing the private key")
+	}
+
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		panic("failed to parse DER encoded public key: " + err.Error())
+	}
+
+	actURL, err := url.Parse(configToSet.RancherAPIHost + "/v1-auth")
+	if err != nil {
+		return fmt.Errorf("error in parsing URL")
+	}
 	samlspInstance, err := samlsp.New(samlsp.Options{
-		IDPMetadataURL: "",
-		URL:            configToSet.RancherAPIHost + "/v1-auth",
-		Key:            string(configToSet.SPSelfSignedKey),
-		Certificate:    string(configToSet.SPSelfSignedCert),
+		IDPMetadataURL: nil,
+		URL:            *actURL,
+		Key:            privKey,
+		Certificate:    cert,
 	})
+
+	if err != nil {
+		log.Errorf("Error initializing SAML SP instance from the config %v, error %v", configToSet, err)
+	}
 
 	if err != nil {
 		log.Errorf("Error initializing SAML SP instance from the config %v, error %v", configToSet, err)
@@ -83,12 +138,12 @@ func (sp *SPClient) initializeSPClient(configToSet *model.ShibbolethConfig) erro
 		if err != nil {
 			return fmt.Errorf("Cannot initialize saml Shibboleth SP, cannot get IDP Metadata  from the url %v, error %v", idpURL, err)
 		}
-		samlspInstance.ServiceProvider.IDPMetadata = &saml.Metadata{}
+		samlspInstance.ServiceProvider.IDPMetadata = &saml.EntityDescriptor{}
 		if err := xml.NewDecoder(resp.Body).Decode(samlspInstance.ServiceProvider.IDPMetadata); err != nil {
 			return fmt.Errorf("Cannot initialize saml Shibboleth SP, cannot decode IDP Metadata xml from the config %v, error %v", configToSet, err)
 		}
 	} else if configToSet.IDPMetadataContent != "" {
-		samlspInstance.ServiceProvider.IDPMetadata = &saml.Metadata{}
+		samlspInstance.ServiceProvider.IDPMetadata = &saml.EntityDescriptor{}
 		if err := xml.NewDecoder(strings.NewReader(configToSet.IDPMetadataContent)).Decode(samlspInstance.ServiceProvider.IDPMetadata); err != nil {
 			return fmt.Errorf("Cannot initialize saml Shibboleth SP, cannot decode IDP Metadata content from the config %v, error %v", configToSet, err)
 		}
@@ -98,7 +153,7 @@ func (sp *SPClient) initializeSPClient(configToSet *model.ShibbolethConfig) erro
 			return fmt.Errorf("Cannot initialize saml Shibboleth SP, cannot read IDP Metadata file from the config %v, error %v", configToSet, err)
 		}
 		metadataReader := bufio.NewReader(file)
-		samlspInstance.ServiceProvider.IDPMetadata = &saml.Metadata{}
+		samlspInstance.ServiceProvider.IDPMetadata = &saml.EntityDescriptor{}
 		if err := xml.NewDecoder(metadataReader).Decode(samlspInstance.ServiceProvider.IDPMetadata); err != nil {
 			return fmt.Errorf("Cannot initialize saml Shibboleth SP, cannot decode IDP Metadata xml from the config %v, error %v", configToSet, err)
 		}
