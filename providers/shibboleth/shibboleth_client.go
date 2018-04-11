@@ -30,6 +30,7 @@ func (sp *SPClient) initializeSPClient(configToSet *model.ShibbolethConfig) erro
 
 	var idpURL string
 	var privKey *rsa.PrivateKey
+	var cert *x509.Certificate
 	var err error
 	var ok bool
 
@@ -70,50 +71,54 @@ func (sp *SPClient) initializeSPClient(configToSet *model.ShibbolethConfig) erro
 		}
 	}
 
-	// used from ssh.ParseRawPrivateKey
+	if configToSet.SPSelfSignedKey != "" {
+		// used from ssh.ParseRawPrivateKey
+		block, _ := pem.Decode([]byte(configToSet.SPSelfSignedKey))
+		if block == nil {
+			return fmt.Errorf("no key found")
+		}
 
-	block, _ := pem.Decode([]byte(configToSet.SPSelfSignedKey))
-	if block == nil {
-		return fmt.Errorf("no key found")
+		if strings.Contains(block.Headers["Proc-Type"], "ENCRYPTED") {
+			return fmt.Errorf("cannot decode encrypted private keys")
+		}
+
+		switch block.Type {
+		case "RSA PRIVATE KEY":
+			privKey, err = x509.ParsePKCS1PrivateKey(block.Bytes)
+			if err != nil {
+				return fmt.Errorf("error parsing PKCS1 RSA key: %v", err)
+			}
+		case "PRIVATE KEY":
+			pk, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+			if err != nil {
+				return fmt.Errorf("error parsing PKCS8 RSA key: %v", err)
+			}
+			privKey, ok = pk.(*rsa.PrivateKey)
+			if !ok {
+				return fmt.Errorf("unable to get rsa key")
+			}
+		default:
+			return fmt.Errorf("unsupported key type %q", block.Type)
+		}
 	}
 
-	if strings.Contains(block.Headers["Proc-Type"], "ENCRYPTED") {
-		return fmt.Errorf("cannot decode encrypted private keys")
-	}
+	if configToSet.SPSelfSignedCert != "" {
+		block, _ := pem.Decode([]byte(configToSet.SPSelfSignedCert))
+		if block == nil {
+			panic("failed to parse PEM block containing the private key")
+		}
 
-	switch block.Type {
-	case "RSA PRIVATE KEY":
-		privKey, err = x509.ParsePKCS1PrivateKey(block.Bytes)
+		cert, err = x509.ParseCertificate(block.Bytes)
 		if err != nil {
-			return fmt.Errorf("error parsing PKCS1 RSA key: %v", err)
+			panic("failed to parse DER encoded public key: " + err.Error())
 		}
-	case "PRIVATE KEY":
-		pk, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-		if err != nil {
-			return fmt.Errorf("error parsing PKCS8 RSA key: %v", err)
-		}
-		privKey, ok = pk.(*rsa.PrivateKey)
-		if !ok {
-			return fmt.Errorf("unable to get rsa key")
-		}
-	default:
-		return fmt.Errorf("unsupported key type %q", block.Type)
-	}
-
-	block, _ = pem.Decode([]byte(configToSet.SPSelfSignedCert))
-	if block == nil {
-		panic("failed to parse PEM block containing the private key")
-	}
-
-	cert, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		panic("failed to parse DER encoded public key: " + err.Error())
 	}
 
 	actURL, err := url.Parse(configToSet.RancherAPIHost + "/v1-auth")
 	if err != nil {
 		return fmt.Errorf("error in parsing URL")
 	}
+
 	samlspInstance, err := samlsp.New(samlsp.Options{
 		IDPMetadataURL: nil,
 		URL:            *actURL,
