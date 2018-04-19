@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	b64 "encoding/base64"
 	log "github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher/v2"
@@ -897,7 +898,7 @@ func (l *LClient) userRecord(search *ldap.SearchRequest, lConn *ldap.Conn, name 
 		return nilToken, status, fmt.Errorf("User identity not found for Ldap")
 	}
 	token.ExternalAccountID = userIdentity.ExternalId
-	token.AccessToken = userIdentity.ExternalId
+	token.AccessToken = b64.StdEncoding.EncodeToString([]byte(userIdentity.ExternalId))
 	token.OriginalLogin = originalLogin
 	return token, status, nil
 }
