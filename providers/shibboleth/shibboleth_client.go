@@ -134,6 +134,14 @@ func (sp *SPClient) initializeSPClient(configToSet *model.ShibbolethConfig) erro
 		log.Errorf("Error initializing SAML SP instance from the config %v, error %v", configToSet, err)
 	}
 
+	cookieStore := samlsp.ClientCookies{
+		ServiceProvider: &samlspInstance.ServiceProvider,
+		Name:            "samlToken",
+		Domain:          actURL.Host,
+	}
+	samlspInstance.ClientState = &cookieStore
+	samlspInstance.ClientToken = &cookieStore
+
 	if idpURL != "" {
 		tr := &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
