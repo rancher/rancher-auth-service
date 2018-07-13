@@ -255,8 +255,8 @@ func Reload(w http.ResponseWriter, r *http.Request) {
 func HandleSamlPost(w http.ResponseWriter, r *http.Request) {
 	//get all X-Saml- headers and pass it to the provider
 	log.Debugf("HandleSamlPost: request url is %v", r.URL.String())
-	cookie, _ := r.Cookie("token")
-	log.Infof("token cookie: %v", cookie)
+	cookie, _ := r.Cookie("samlToken")
+	log.Infof("token cookie: %#v", cookie)
 
 	samlData := make(map[string][]string)
 
