@@ -1,16 +1,19 @@
 package service
 
 import (
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
-	log "github.com/Sirupsen/logrus"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
-	"github.com/crewjam/saml/samlsp"
+	log "github.com/Sirupsen/logrus"
+	"github.com/crewjam/saml"
+	"github.com/dgrijalva/jwt-go"
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/v2"
 	"github.com/rancher/rancher-auth-service/model"
@@ -18,10 +21,8 @@ import (
 )
 
 const (
-	samlParam        = "samlJWT"
 	redirectBackBase = "redirectBackBase"
 	redirectBackPath = "redirectBackPath"
-	getSamlAuthToken = "/v1-auth/saml/authtoken"
 )
 
 //CreateToken is a handler for route /token and returns the jwt token after authenticating the user
@@ -194,12 +195,6 @@ func UpdateConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Debugf("Updated config, listing the config back")
-	if authConfig.Provider == "shibbolethconfig" {
-		//enable the saml SP wrapper over the saml routes
-		addRouteHandler(server.SamlServiceProvider.RequireAccount(http.HandlerFunc(HandleSamlPost)), "SamlLogin")
-		addRouteHandler(server.SamlServiceProvider, "SamlACS")
-		addRouteHandler(server.SamlServiceProvider, "SamlMetadata")
-	}
 
 	//list the config and return in response
 	config, err := server.GetConfig("", true)
@@ -249,114 +244,6 @@ func Reload(w http.ResponseWriter, r *http.Request) {
 		ReturnHTTPError(w, r, http.StatusInternalServerError, "Failed to reload the auth config")
 		return
 	}
-}
-
-//HandleSamlPost handles the SAML Post
-func HandleSamlPost(w http.ResponseWriter, r *http.Request) {
-	//get all X-Saml- headers and pass it to the provider
-	log.Debugf("HandleSamlPost: request url is %v", r.URL.String())
-	cookie, _ := r.Cookie("samlToken")
-	log.Infof("token cookie: %#v", cookie)
-
-	samlData := make(map[string][]string)
-
-	samlData = samlsp.Token(r.Context()).Attributes
-	log.Debugf("HandleSamlPost: Received a SAML POST data %v", samlData)
-
-	//get the SAML data, create a jwt token and Redirect to ${redirectBackBase (or if not provided, api.host)}/v1-auth/saml/authtoken with query param json = map
-	mapB, err := json.Marshal(samlData)
-	if err != nil {
-		//failed to get the saml data
-		log.Debugf("HandleSamlPost failed to unmarshal saml data with error %v", err)
-		ReturnHTTPError(w, r, http.StatusInternalServerError, "Failed to unmarshal the saml data")
-		return
-	}
-	log.Debugf("HandleSamlPost saml %v ", string(mapB))
-
-	var redirectBackBaseParam string
-	if r.URL.Query() != nil {
-		redirectBackBaseParam = r.URL.Query().Get(redirectBackBase)
-		if redirectBackBaseParam == "" {
-			redirectBackBaseParam = server.GetRancherAPIHost()
-		}
-	} else {
-		redirectBackBaseParam = server.GetRancherAPIHost()
-	}
-	redirectURL := redirectBackBaseParam + getSamlAuthToken
-	v := r.URL.Query()
-	v.Add(samlParam, string(cookie.Value))
-	queryStr := v.Encode()
-
-	redirectURL = redirectURL + "?" + queryStr
-
-	log.Debugf("redirecting the user to %v", redirectURL)
-
-	tokenCookie := &http.Cookie{
-		Name:    "token",
-		Value:   "",
-		Secure:  false,
-		Path:    "/",
-		MaxAge:  -1,
-		Expires: time.Date(1982, time.February, 10, 23, 0, 0, 0, time.UTC),
-	}
-	http.SetCookie(w, tokenCookie)
-
-	http.Redirect(w, r, redirectURL, http.StatusFound)
-
-}
-
-//GetSamlAuthToken handles the SAML login using query parameters and creates an auth token calling cattle
-func GetSamlAuthToken(w http.ResponseWriter, r *http.Request) {
-	log.Debugf("GetSamlAuthToken : url is %v", r.URL.String())
-
-	query, err := url.ParseQuery(r.URL.RawQuery)
-	if err != nil {
-		//failed to get the url query parameters
-		log.Errorf("GetSamlAuthToken failed to parse query params with error %v", err)
-		ReturnHTTPError(w, r, http.StatusInternalServerError, "Failed to get the auth query parameters")
-		return
-	}
-
-	redirectURL := server.GetSamlRedirectURL(query.Get(redirectBackBase), query.Get(redirectBackPath))
-
-	samlJWT := query.Get(samlParam)
-	ok, samlData := server.IsSamlJWTValid(samlJWT)
-
-	if !ok {
-		//failed to validate the SAML JWT
-		log.Errorf("GetSamlAuthToken failed to validate the SAML JWT")
-		redirectURL = addErrorToRedirect(redirectURL, "401")
-		http.Redirect(w, r, redirectURL, http.StatusFound)
-		return
-	}
-	log.Debugf("Received SAML  data %v", samlData)
-	jwt, errToken := server.GetSamlAuthToken(samlData)
-
-	if errToken != nil {
-		//failed to get token from cattle
-		log.Errorf("GetSamlAuthToken failed to Get token from cattle with error %v", errToken.Error())
-		if strings.Contains(errToken.Error(), "401") {
-			//add error=401 query param to redirect
-			redirectURL = addErrorToRedirect(redirectURL, "401")
-		} else {
-			redirectURL = addErrorToRedirect(redirectURL, "500")
-		}
-		http.Redirect(w, r, redirectURL, http.StatusFound)
-		return
-	}
-
-	tokenCookie := &http.Cookie{
-		Name:   "token",
-		Value:  jwt,
-		Secure: false,
-		Path:   "/",
-	}
-	http.SetCookie(w, tokenCookie)
-
-	log.Debugf("redirecting the user with token to %v", redirectURL)
-
-	http.Redirect(w, r, redirectURL, http.StatusFound)
-
 }
 
 func addErrorToRedirect(redirectURL string, code string) string {
@@ -457,4 +344,216 @@ func TestLogin(w http.ResponseWriter, r *http.Request) {
 		}
 		ReturnHTTPError(w, r, status, fmt.Sprintf("%v", err))
 	}
+}
+
+// HandleSamlLogin is the endpoint for /saml/login endpoint
+func HandleSamlLogin(w http.ResponseWriter, r *http.Request) {
+	var redirectBackBaseValue, redirectBackPathValue string
+	s := server.SamlServiceProvider
+
+	s.XForwardedProto = r.Header.Get("X-Forwarded-Proto")
+
+	if r.URL.Query() != nil {
+		redirectBackBaseValue = r.URL.Query().Get(redirectBackBase)
+		if redirectBackBaseValue == "" {
+			redirectBackBaseValue = server.GetRancherAPIHost()
+		}
+	} else {
+		redirectBackBaseValue = server.GetRancherAPIHost()
+	}
+
+	if redirectBackBaseValue != server.GetRancherAPIHost() {
+		log.Errorf("Cannot redirect to anything other than Rancher host")
+		return
+	}
+	s.RedirectBackBase = redirectBackBaseValue
+
+	redirectBackPathValue = r.URL.Query().Get(redirectBackPath)
+	s.RedirectBackPath = redirectBackPathValue
+
+	serviceProvider := s.ServiceProvider
+	if r.URL.Path == serviceProvider.AcsURL.Path {
+		return
+	}
+
+	binding := saml.HTTPRedirectBinding
+	bindingLocation := serviceProvider.GetSSOBindingLocation(binding)
+	if bindingLocation == "" {
+		binding = saml.HTTPPostBinding
+		bindingLocation = serviceProvider.GetSSOBindingLocation(binding)
+	}
+
+	req, err := serviceProvider.MakeAuthenticationRequest(bindingLocation)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// relayState is limited to 80 bytes but also must be integrety protected.
+	// this means that we cannot use a JWT because it is way to long. Instead
+	// we set a cookie that corresponds to the state
+	relayState := base64.URLEncoding.EncodeToString(randomBytes(42))
+
+	secretBlock := x509.MarshalPKCS1PrivateKey(serviceProvider.Key)
+	state := jwt.New(jwt.SigningMethodHS256)
+	claims := state.Claims.(jwt.MapClaims)
+	claims["id"] = req.ID
+	claims["uri"] = r.URL.String()
+	signedState, err := state.SignedString(secretBlock)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	s.ClientState.SetState(w, r, relayState, signedState)
+
+	if binding == saml.HTTPRedirectBinding {
+		redirectURL := req.Redirect(relayState)
+		w.Header().Add("Location", redirectURL.String())
+		w.WriteHeader(http.StatusFound)
+		return
+	}
+	if binding == saml.HTTPPostBinding {
+		w.Header().Add("Content-Security-Policy", ""+
+			"default-src; "+
+			"script-src 'sha256-AjPdJSbZmeWHnEc5ykvJFay8FTWeTeRbs9dutfZ0HqE='; "+
+			"reflected-xss block; referrer no-referrer;")
+		w.Header().Add("Content-type", "text/html")
+		w.Write([]byte(`<!DOCTYPE html><html><body>`))
+		w.Write(req.Post(relayState))
+		w.Write([]byte(`</body></html>`))
+		return
+	}
+}
+
+// ServeHTTP is the handler for /saml/metadata and /saml/acs endpoints
+func ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	serviceProvider := server.SamlServiceProvider.ServiceProvider
+	if r.URL.Path == serviceProvider.MetadataURL.Path {
+		buf, _ := xml.MarshalIndent(serviceProvider.Metadata(), "", "  ")
+		w.Header().Set("Content-Type", "application/samlmetadata+xml")
+		w.Write(buf)
+		return
+	}
+
+	if r.URL.Path == serviceProvider.AcsURL.Path {
+		r.ParseForm()
+		assertion, err := serviceProvider.ParseResponse(r, getPossibleRequestIDs(r, server.SamlServiceProvider))
+		if err != nil {
+			if parseErr, ok := err.(*saml.InvalidResponseError); ok {
+				log.Errorf("RESPONSE: ===\n%s\n===\nNOW: %s\nERROR: %s",
+					parseErr.Response, parseErr.Now, parseErr.PrivateErr)
+			}
+			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			return
+		}
+
+		HandleSamlAssertion(w, r, assertion, server.SamlServiceProvider)
+		return
+	}
+
+	http.NotFoundHandler().ServeHTTP(w, r)
+}
+
+func getPossibleRequestIDs(r *http.Request, s *model.RancherSamlServiceProvider) []string {
+	rv := []string{}
+	for name, value := range s.ClientState.GetStates(r) {
+		if strings.HasPrefix(name, "Rancher_") {
+			continue
+		}
+		jwtParser := jwt.Parser{
+			ValidMethods: []string{jwt.SigningMethodHS256.Name},
+		}
+		token, err := jwtParser.Parse(value, func(t *jwt.Token) (interface{}, error) {
+			secretBlock := x509.MarshalPKCS1PrivateKey(s.ServiceProvider.Key)
+			return secretBlock, nil
+		})
+		if err != nil || !token.Valid {
+			log.Debugf("... invalid token %s", err)
+			continue
+		}
+		claims := token.Claims.(jwt.MapClaims)
+		rv = append(rv, claims["id"].(string))
+	}
+	return rv
+}
+
+func randomBytes(n int) []byte {
+	rv := make([]byte, n)
+	if _, err := saml.RandReader.Read(rv); err != nil {
+		panic(err)
+	}
+	return rv
+}
+
+// HandleSamlAssertion processes/handles the assertion obtained by the POST to /saml/acs from IdP
+func HandleSamlAssertion(w http.ResponseWriter, r *http.Request, assertion *saml.Assertion, serviceProvider *model.RancherSamlServiceProvider) {
+	redirectBackBaseValue := serviceProvider.RedirectBackBase
+	redirectBackPathValue := serviceProvider.RedirectBackPath
+	if redirectBackBaseValue != server.GetRancherAPIHost() {
+		log.Errorf("Cannot redirect to anything other than Rancher host")
+		return
+	}
+	redirectURL := server.GetSamlRedirectURL(redirectBackBaseValue, redirectBackPathValue)
+	samlData := make(map[string][]string)
+
+	for _, attributeStatement := range assertion.AttributeStatements {
+		for _, attr := range attributeStatement.Attributes {
+			attrName := attr.FriendlyName
+			if attrName == "" {
+				attrName = attr.Name
+			}
+			for _, value := range attr.Values {
+				samlData[attrName] = append(samlData[attrName], value.Value)
+			}
+		}
+	}
+
+	rancherAPI := server.GetRancherAPIHost()
+	//get the SAML data, create a jwt token and POST to /v1/token with code = "jwt token"
+	mapB, _ := json.Marshal(samlData)
+
+	inputJSON := make(map[string]string)
+	inputJSON["code"] = string(mapB)
+	outputJSON := make(map[string]interface{})
+
+	tokenURL := rancherAPI + "/v1/token"
+	log.Debugf("HandleSamlAssertion: tokenURL %v ", tokenURL)
+
+	err := server.RancherClient.Post(tokenURL, inputJSON, &outputJSON)
+	if err != nil {
+		//failed to get token from cattle
+		log.Errorf("HandleSamlAssertion failed to Get token from cattle with error %v", err.Error())
+		if strings.Contains(err.Error(), "401") {
+			//add error=401 query param to redirect
+			redirectURL = addErrorToRedirect(redirectURL, "401")
+		} else if strings.Contains(err.Error(), "403") {
+			redirectURL = addErrorToRedirect(redirectURL, "403")
+		} else {
+			redirectURL = addErrorToRedirect(redirectURL, "500")
+		}
+		http.Redirect(w, r, redirectURL, http.StatusFound)
+		return
+	}
+
+	jwt := outputJSON["jwt"].(string)
+	log.Debugf("HandleSamlAssertion: Got token %v ", jwt)
+
+	secure := false
+	XForwardedProtoValue := serviceProvider.XForwardedProto
+	if XForwardedProtoValue == "https" {
+		secure = true
+	}
+	tokenCookie := &http.Cookie{
+		Name:   "token",
+		Value:  jwt,
+		Secure: secure,
+		MaxAge: 0,
+		Path:   "/",
+	}
+	http.SetCookie(w, tokenCookie)
+
+	log.Debugf("redirecting the user with token to %v", redirectURL)
+
+	http.Redirect(w, r, redirectURL, http.StatusFound)
+	return
 }

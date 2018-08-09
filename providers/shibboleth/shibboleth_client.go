@@ -23,24 +23,25 @@ import (
 //SPClient implements a client for shibboleth and the saml library
 type SPClient struct {
 	config *model.ShibbolethConfig
-	samlSP *samlsp.Middleware
 }
 
-func (sp *SPClient) initializeSPClient(configToSet *model.ShibbolethConfig) error {
-
+func (spclient *SPClient) initializeSPClient(configToSet *model.ShibbolethConfig) error {
 	var idpURL string
 	var privKey *rsa.PrivateKey
 	var cert *x509.Certificate
 	var err error
 	var ok bool
 
-	sp.config = configToSet
+	spclient.config = configToSet
 
+	/* After auth is setup, the admin can change the access mode/allowed principals via admin access control page. When the admin clicks on "Save",
+	a POST to v1-auth/config is made, which includes the entire model.ShibbolethConfig. During this call, the key and metadata aren't passed by UI
+	that's why we won't return an error here, instead we can just return nil */
 	if configToSet.IDPMetadataURL == "" {
 		idpURL = ""
 		if configToSet.IDPMetadataContent == "" {
 			if configToSet.IDPMetadataFilePath == "" {
-				log.Debugf("Cannot initialize saml Shibboleth SP properly, missing IDP URL/metadata in the config %v", configToSet)
+				log.Debugf("SAML: Cannot initialize saml Shibboleth SP properly, missing IDP metadata in the config %v", configToSet)
 			}
 		}
 	} else {
@@ -55,7 +56,7 @@ func (sp *SPClient) initializeSPClient(configToSet *model.ShibbolethConfig) erro
 			}
 			configToSet.SPSelfSignedCert = string(cert)
 		} else {
-			log.Debugf("Cannot initialize saml Shibboleth SP properly, missing SPSelfSignedCert in the config %v", configToSet)
+			log.Debugf("SAML: Cannot initialize saml SP properly, missing SpCert in the config %v", configToSet)
 		}
 	}
 
@@ -67,7 +68,7 @@ func (sp *SPClient) initializeSPClient(configToSet *model.ShibbolethConfig) erro
 			}
 			configToSet.SPSelfSignedKey = string(key)
 		} else {
-			log.Debugf("Cannot initialize saml Shibboleth SP properly, missing SPSelfSignedKey in the config %v", configToSet)
+			log.Debugf("SAML: Cannot initialize saml SP properly, missing SpKey in the config %v", configToSet)
 		}
 	}
 
@@ -119,15 +120,16 @@ func (sp *SPClient) initializeSPClient(configToSet *model.ShibbolethConfig) erro
 		return fmt.Errorf("error in parsing URL")
 	}
 
-	samlspInstance, err := samlsp.New(samlsp.Options{
-		IDPMetadataURL: nil,
-		URL:            *actURL,
-		Key:            privKey,
-		Certificate:    cert,
-	})
+	metadataURL := *actURL
+	metadataURL.Path = metadataURL.Path + "/saml/metadata"
+	acsURL := *actURL
+	acsURL.Path = acsURL.Path + "/saml/acs"
 
-	if err != nil {
-		log.Errorf("Error initializing SAML SP instance from the config %v, error %v", configToSet, err)
+	sp := &saml.ServiceProvider{
+		Key:         privKey,
+		Certificate: cert,
+		MetadataURL: metadataURL,
+		AcsURL:      acsURL,
 	}
 
 	if err != nil {
@@ -135,12 +137,10 @@ func (sp *SPClient) initializeSPClient(configToSet *model.ShibbolethConfig) erro
 	}
 
 	cookieStore := samlsp.ClientCookies{
-		ServiceProvider: &samlspInstance.ServiceProvider,
+		ServiceProvider: sp,
 		Name:            "samlToken",
 		Domain:          actURL.Host,
 	}
-	samlspInstance.ClientState = &cookieStore
-	samlspInstance.ClientToken = &cookieStore
 
 	if idpURL != "" {
 		tr := &http.Transport{
@@ -151,13 +151,13 @@ func (sp *SPClient) initializeSPClient(configToSet *model.ShibbolethConfig) erro
 		if err != nil {
 			return fmt.Errorf("Cannot initialize saml Shibboleth SP, cannot get IDP Metadata  from the url %v, error %v", idpURL, err)
 		}
-		samlspInstance.ServiceProvider.IDPMetadata = &saml.EntityDescriptor{}
-		if err := xml.NewDecoder(resp.Body).Decode(samlspInstance.ServiceProvider.IDPMetadata); err != nil {
+		sp.IDPMetadata = &saml.EntityDescriptor{}
+		if err := xml.NewDecoder(resp.Body).Decode(sp.IDPMetadata); err != nil {
 			return fmt.Errorf("Cannot initialize saml Shibboleth SP, cannot decode IDP Metadata xml from the config %v, error %v", configToSet, err)
 		}
 	} else if configToSet.IDPMetadataContent != "" {
-		samlspInstance.ServiceProvider.IDPMetadata = &saml.EntityDescriptor{}
-		if err := xml.NewDecoder(strings.NewReader(configToSet.IDPMetadataContent)).Decode(samlspInstance.ServiceProvider.IDPMetadata); err != nil {
+		sp.IDPMetadata = &saml.EntityDescriptor{}
+		if err := xml.NewDecoder(strings.NewReader(configToSet.IDPMetadataContent)).Decode(sp.IDPMetadata); err != nil {
 			return fmt.Errorf("Cannot initialize saml Shibboleth SP, cannot decode IDP Metadata content from the config %v, error %v", configToSet, err)
 		}
 	} else if configToSet.IDPMetadataFilePath != "" {
@@ -166,32 +166,36 @@ func (sp *SPClient) initializeSPClient(configToSet *model.ShibbolethConfig) erro
 			return fmt.Errorf("Cannot initialize saml Shibboleth SP, cannot read IDP Metadata file from the config %v, error %v", configToSet, err)
 		}
 		metadataReader := bufio.NewReader(file)
-		samlspInstance.ServiceProvider.IDPMetadata = &saml.EntityDescriptor{}
-		if err := xml.NewDecoder(metadataReader).Decode(samlspInstance.ServiceProvider.IDPMetadata); err != nil {
+		sp.IDPMetadata = &saml.EntityDescriptor{}
+		if err := xml.NewDecoder(metadataReader).Decode(sp.IDPMetadata); err != nil {
 			return fmt.Errorf("Cannot initialize saml Shibboleth SP, cannot decode IDP Metadata xml from the config %v, error %v", configToSet, err)
 		}
-
 	}
-	configToSet.SamlServiceProvider = samlspInstance
-	sp.samlSP = configToSet.SamlServiceProvider
+
+	rsp := &model.RancherSamlServiceProvider{
+		ServiceProvider: *sp,
+		ClientState:     cookieStore,
+	}
+
+	configToSet.SamlServiceProvider = rsp
 	return nil
 }
 
-func (sp *SPClient) getShibIdentities(samlData map[string][]string) ([]Account, error) {
+func (spclient *SPClient) getShibIdentities(samlData map[string][]string) ([]Account, error) {
 	//look for saml attributes set in the config
 	var shibAccts []Account
 
-	uid, ok := samlData[sp.config.UIDField]
+	uid, ok := samlData[spclient.config.UIDField]
 	if ok {
 		shibAcct := Account{}
 		shibAcct.UID = uid[0]
 
-		displayName, ok := samlData[sp.config.DisplayNameField]
+		displayName, ok := samlData[spclient.config.DisplayNameField]
 		if ok {
 			shibAcct.DisplayName = displayName[0]
 		}
 
-		userName, ok := samlData[sp.config.UserNameField]
+		userName, ok := samlData[spclient.config.UserNameField]
 		if ok {
 			shibAcct.UserName = userName[0]
 		}
@@ -199,7 +203,7 @@ func (sp *SPClient) getShibIdentities(samlData map[string][]string) ([]Account, 
 
 		shibAccts = append(shibAccts, shibAcct)
 
-		groups, ok := samlData[sp.config.GroupsField]
+		groups, ok := samlData[spclient.config.GroupsField]
 		if ok {
 			for _, group := range groups {
 				groupAcct := Account{}

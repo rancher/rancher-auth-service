@@ -5,7 +5,6 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -16,8 +15,6 @@ import (
 	"time"
 
 	log "github.com/Sirupsen/logrus"
-	"github.com/crewjam/saml/samlsp"
-	"github.com/dgrijalva/jwt-go"
 	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher/v2"
 	"github.com/rancher/rancher-auth-service/model"
@@ -53,7 +50,7 @@ var (
 	//IDPMetadataFile is the path to the metadata file of the Shibboleth IDP
 	IDPMetadataFile string
 	//SamlServiceProvider is the handle to the SamlServiceProvider configured by the router
-	SamlServiceProvider *samlsp.Middleware
+	SamlServiceProvider *model.RancherSamlServiceProvider
 	refreshReqChannel   *chan int
 	authConfigFile      string
 	key                 []byte
@@ -949,36 +946,6 @@ func SearchIdentities(name string, exactMatch bool, accessToken string) ([]clien
 	return []client.Identity{}, fmt.Errorf("No auth provider configured")
 }
 
-//GetSamlAuthToken handles the SAML assertions posted by an IDP
-func GetSamlAuthToken(samlData map[string][]string) (string, error) {
-	//ensure SAML provider is enabled
-	if provider != nil && provider.GetName() == "shibboleth" {
-		rancherAPI := GetRancherAPIHost()
-		//get the SAML data, create a jwt token and POST to /v1/token with code = "jwt token"
-		mapB, _ := json.Marshal(samlData)
-		log.Debugf("GetSamlAuthToken : samlData %v ", string(mapB))
-
-		inputJSON := make(map[string]string)
-		inputJSON["code"] = string(mapB)
-		outputJSON := make(map[string]interface{})
-
-		tokenURL := rancherAPI + "/v1/token"
-		log.Debugf("GetSamlAuthToken: tokenURL %v ", tokenURL)
-
-		err := RancherClient.Post(tokenURL, inputJSON, &outputJSON)
-		if err != nil {
-			log.Errorf("HandleSAMLPost: Error doing POST /v1/token: %v, data: %v", err, samlData)
-			return "", err
-		}
-
-		jwt := outputJSON["jwt"].(string)
-		log.Debugf("GetSamlAuthToken: Got token %v ", jwt)
-
-		return jwt, nil
-	}
-	return "", nil
-}
-
 //GetRancherAPIHost reads the api.host setting
 func GetRancherAPIHost() string {
 	var settings []string
@@ -1038,49 +1005,6 @@ func GetSamlRedirectURL(redirectBackBase string, redirectBackPath string) string
 		log.Debugf("GetSamlRedirectURL : redirectURL %v ", redirectURL)
 	}
 	return redirectURL
-}
-
-//IsSamlJWTValid verfies the saml JWT token
-func IsSamlJWTValid(value string) (bool, map[string][]string) {
-	samlData := make(map[string][]string)
-	if provider != nil && provider.GetName() == "shibboleth" {
-		if SamlServiceProvider != nil {
-			token, err := jwt.Parse(value, func(t *jwt.Token) (interface{}, error) {
-				secretBlock := x509.MarshalPKCS1PrivateKey(SamlServiceProvider.ServiceProvider.Key)
-				return secretBlock, nil
-			})
-			if err != nil || !token.Valid {
-				log.Infof("IsSamlJWTValid: invalid token: %s", err)
-				return false, samlData
-			}
-
-			if claims, ok := token.Claims.(jwt.MapClaims); ok {
-				for key, values := range claims {
-					if key != "attr" {
-						continue
-					}
-					if attrMap, ok := values.(map[string]interface{}); ok {
-						for k, val := range attrMap {
-							valueSlice := val.([]interface{})
-							valueStrs := make([]string, len(valueSlice))
-							for i, value := range valueSlice {
-								valueStrs[i] = value.(string)
-							}
-							samlData[k] = valueStrs
-						}
-					} else {
-						log.Infof("IsSamlJWTValid: attributes not found in token")
-						return false, samlData
-					}
-				}
-			} else {
-				log.Infof("IsSamlJWTValid: claims not found in token")
-				return false, samlData
-			}
-			return true, samlData
-		}
-	}
-	return false, samlData
 }
 
 func TestLogin(testAuthConfig model.TestAuthConfig, accessToken string, token string) (int, error) {

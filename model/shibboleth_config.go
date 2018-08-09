@@ -1,6 +1,7 @@
 package model
 
 import (
+	"github.com/crewjam/saml"
 	"github.com/crewjam/saml/samlsp"
 	"github.com/rancher/go-rancher/v2"
 )
@@ -22,5 +23,13 @@ type ShibbolethConfig struct {
 	SPSelfSignedKeyFilePath  string
 	RancherAPIHost           string
 
-	SamlServiceProvider *samlsp.Middleware
+	SamlServiceProvider *RancherSamlServiceProvider
+}
+
+type RancherSamlServiceProvider struct {
+	ServiceProvider  saml.ServiceProvider
+	ClientState      samlsp.ClientState
+	RedirectBackPath string
+	RedirectBackBase string
+	XForwardedProto  string
 }
