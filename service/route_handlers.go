@@ -362,10 +362,11 @@ func HandleSamlLogin(w http.ResponseWriter, r *http.Request) {
 		redirectBackBaseValue = server.GetRancherAPIHost()
 	}
 
-	if redirectBackBaseValue != server.GetRancherAPIHost() {
-		log.Errorf("Cannot redirect to anything other than Rancher host")
+	if !isWhitelisted(redirectBackBaseValue, s.RedirectWhitelist) {
+		log.Errorf("Cannot redirect to anything other than whitelisted domains and rancher api host")
 		return
 	}
+
 	s.RedirectBackBase = redirectBackBaseValue
 
 	redirectBackPathValue = r.URL.Query().Get(redirectBackPath)
@@ -489,10 +490,12 @@ func randomBytes(n int) []byte {
 func HandleSamlAssertion(w http.ResponseWriter, r *http.Request, assertion *saml.Assertion, serviceProvider *model.RancherSamlServiceProvider) {
 	redirectBackBaseValue := serviceProvider.RedirectBackBase
 	redirectBackPathValue := serviceProvider.RedirectBackPath
-	if redirectBackBaseValue != server.GetRancherAPIHost() {
-		log.Errorf("Cannot redirect to anything other than Rancher host")
+
+	if !isWhitelisted(redirectBackBaseValue, serviceProvider.RedirectWhitelist) {
+		log.Errorf("Cannot redirect to anything other than whitelisted domains and rancher api host")
 		return
 	}
+
 	redirectURL := server.GetSamlRedirectURL(redirectBackBaseValue, redirectBackPathValue)
 	samlData := make(map[string][]string)
 
@@ -556,4 +559,22 @@ func HandleSamlAssertion(w http.ResponseWriter, r *http.Request, assertion *saml
 
 	http.Redirect(w, r, redirectURL, http.StatusFound)
 	return
+}
+
+func isWhitelisted(redirectBackBaseValue string, redirectWhitelist string) bool {
+	if redirectBackBaseValue == server.GetRancherAPIHost() {
+		return true
+	}
+
+	// comma separated list of whitelisted domains to redirect to
+	if redirectWhitelist != "" {
+		whitelistedDomains := strings.Split(redirectWhitelist, ",")
+		for _, w := range whitelistedDomains {
+			if redirectBackBaseValue == w {
+				return true
+			}
+		}
+	}
+
+	return false
 }

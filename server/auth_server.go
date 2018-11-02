@@ -24,18 +24,19 @@ import (
 )
 
 const (
-	accessModeSetting                = "api.auth.access.mode"
-	allowedIdentitiesSetting         = "api.auth.allowed.identities"
-	userTypeSetting                  = "api.auth.user.type"
-	providerSetting                  = "api.auth.provider.configured"
-	providerNameSetting              = "api.auth.provider.name.configured"
-	externalProviderSetting          = "api.auth.external.provider.configured"
-	securitySetting                  = "api.security.enabled"
-	apiHostSetting                   = "api.host"
-	identitySeparatorSetting         = "api.auth.external.provider.identity.separator"
-	authServiceLogSetting            = "auth.service.log.level"
-	authServiceConfigUpdateTimestamp = "auth.service.config.update.timestamp"
-	noIdentityLookupSupportedSetting = "api.auth.external.provider.no.identity.lookup"
+	accessModeSetting                         = "api.auth.access.mode"
+	allowedIdentitiesSetting                  = "api.auth.allowed.identities"
+	userTypeSetting                           = "api.auth.user.type"
+	providerSetting                           = "api.auth.provider.configured"
+	providerNameSetting                       = "api.auth.provider.name.configured"
+	externalProviderSetting                   = "api.auth.external.provider.configured"
+	securitySetting                           = "api.security.enabled"
+	apiHostSetting                            = "api.host"
+	identitySeparatorSetting                  = "api.auth.external.provider.identity.separator"
+	authServiceLogSetting                     = "auth.service.log.level"
+	authServiceConfigUpdateTimestamp          = "auth.service.config.update.timestamp"
+	noIdentityLookupSupportedSetting          = "api.auth.external.provider.no.identity.lookup"
+	apiAuthShibbolethRedirectWhitelistSetting = "api.auth.shibboleth.redirect.whitelist"
 )
 
 var (
@@ -744,11 +745,21 @@ func GetConfig(accessToken string, listOnly bool) (model.AuthConfig, error) {
 	settings = append(settings, providerSetting)
 	settings = append(settings, providerNameSetting)
 	settings = append(settings, authServiceLogSetting)
+	if config.Provider == "shibbolethconfig" {
+		settings = append(settings, apiAuthShibbolethRedirectWhitelistSetting)
+	}
 
 	dbSettings, err := readCommonSettings(settings)
 	if err != nil {
 		log.Errorf("GetConfig: Error reading DB settings %v", err)
 		return config, err
+	}
+
+	if config.Provider == "shibbolethconfig" {
+		// is saml provider is initialized
+		if config.ShibbolethConfig.SamlServiceProvider != nil {
+			config.ShibbolethConfig.SamlServiceProvider.RedirectWhitelist = dbSettings[apiAuthShibbolethRedirectWhitelistSetting]
+		}
 	}
 
 	if dbSettings[authServiceLogSetting] != "" {

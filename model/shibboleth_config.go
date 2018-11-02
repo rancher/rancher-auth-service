@@ -27,9 +27,10 @@ type ShibbolethConfig struct {
 }
 
 type RancherSamlServiceProvider struct {
-	ServiceProvider  saml.ServiceProvider
-	ClientState      samlsp.ClientState
-	RedirectBackPath string
-	RedirectBackBase string
-	XForwardedProto  string
+	ServiceProvider   saml.ServiceProvider
+	ClientState       samlsp.ClientState
+	RedirectBackPath  string
+	RedirectBackBase  string
+	XForwardedProto   string
+	RedirectWhitelist string
 }
