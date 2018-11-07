@@ -1,14 +1,17 @@
 package service
 
 import (
+	"bytes"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"html/template"
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	log "github.com/Sirupsen/logrus"
@@ -21,8 +24,27 @@ import (
 )
 
 const (
-	redirectBackBase = "redirectBackBase"
-	redirectBackPath = "redirectBackPath"
+	redirectBackBase  = "redirectBackBase"
+	redirectBackPath  = "redirectBackPath"
+	postSamlTokenHTML = "/v1-auth/saml/tokenhtml"
+	tpl               = `
+<!DOCTYPE html>
+<html>
+  <head>
+    <script>
+      window.onload = function() {
+        document.getElementById('TokenHTMLResponseForm').submit();
+      }
+    </script>
+  </head>
+  <body>
+    <form method="post" action="{{.URL}}" id="TokenHTMLResponseForm">
+      <input type="hidden" name="token" value="{{.Token}}" />
+      <input type="hidden" name="finalRedirectURL" value="{{.FinalRedirectURL}}" />
+      <input type="hidden" name="secure" value="{{.Secure}}" />
+    </form>
+  </body>
+</html>`
 )
 
 //CreateToken is a handler for route /token and returns the jwt token after authenticating the user
@@ -348,7 +370,7 @@ func TestLogin(w http.ResponseWriter, r *http.Request) {
 
 // HandleSamlLogin is the endpoint for /saml/login endpoint
 func HandleSamlLogin(w http.ResponseWriter, r *http.Request) {
-	var redirectBackBaseValue, redirectBackPathValue string
+	var redirectBackBaseValue string
 	s := server.SamlServiceProvider
 
 	s.XForwardedProto = r.Header.Get("X-Forwarded-Proto")
@@ -366,11 +388,6 @@ func HandleSamlLogin(w http.ResponseWriter, r *http.Request) {
 		log.Errorf("Cannot redirect to anything other than whitelisted domains and rancher api host")
 		return
 	}
-
-	s.RedirectBackBase = redirectBackBaseValue
-
-	redirectBackPathValue = r.URL.Query().Get(redirectBackPath)
-	s.RedirectBackPath = redirectBackPathValue
 
 	serviceProvider := s.ServiceProvider
 	if r.URL.Path == serviceProvider.AcsURL.Path {
@@ -438,7 +455,12 @@ func ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if r.URL.Path == serviceProvider.AcsURL.Path {
 		r.ParseForm()
-		assertion, err := serviceProvider.ParseResponse(r, getPossibleRequestIDs(r, server.SamlServiceProvider))
+		reqIDs, redirectBackBaseValue, redirectBackPathValue, err := getRequestIDAndRedirectParams(r, server.SamlServiceProvider)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			return
+		}
+		assertion, err := serviceProvider.ParseResponse(r, reqIDs)
 		if err != nil {
 			if parseErr, ok := err.(*saml.InvalidResponseError); ok {
 				log.Errorf("RESPONSE: ===\n%s\n===\nNOW: %s\nERROR: %s",
@@ -448,15 +470,15 @@ func ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		HandleSamlAssertion(w, r, assertion, server.SamlServiceProvider)
+		HandleSamlAssertion(w, r, assertion, server.SamlServiceProvider, redirectBackBaseValue, redirectBackPathValue)
 		return
 	}
 
 	http.NotFoundHandler().ServeHTTP(w, r)
 }
 
-func getPossibleRequestIDs(r *http.Request, s *model.RancherSamlServiceProvider) []string {
-	rv := []string{}
+func getRequestIDAndRedirectParams(r *http.Request, s *model.RancherSamlServiceProvider) (reqIDs []string, redirectBackBaseValue string,
+	redirectBackPathValue string, err error) {
 	for name, value := range s.ClientState.GetStates(r) {
 		if strings.HasPrefix(name, "Rancher_") {
 			continue
@@ -473,9 +495,29 @@ func getPossibleRequestIDs(r *http.Request, s *model.RancherSamlServiceProvider)
 			continue
 		}
 		claims := token.Claims.(jwt.MapClaims)
-		rv = append(rv, claims["id"].(string))
+		reqIDs = append(reqIDs, claims["id"].(string))
+		/*
+			HandleSamlLogin sets relayState per request, which contains the URI of the request. This URI has the redirectBackBase and
+			RedirectBackPath values. So we can get the redirectBackBase and redirectBackPath for the current login request from URI of
+			relayState
+		*/
+		redirectURI := claims["uri"].(string)
+		log.Debugf("redirectURI from claims: %v", redirectURI)
+		query, err := url.Parse(redirectURI)
+		if err != nil {
+			log.Errorf("Error in getting query params")
+			return []string{}, "", "", fmt.Errorf("Error in getting query params: %v", err)
+		}
+		parsedQuery, err := url.ParseQuery(query.RawQuery)
+		if err != nil {
+			log.Errorf("Error in parsing query params")
+			return []string{}, "", "", fmt.Errorf("Error in parsing query params: %v", err)
+		}
+		redirectBackBaseValue = parsedQuery.Get(redirectBackBase)
+		redirectBackPathValue = parsedQuery.Get(redirectBackPath)
+		log.Debugf("redirectBackBaseValue, redirectBackPathValue from claims: %v, %v", redirectBackBaseValue, redirectBackPathValue)
 	}
-	return rv
+	return reqIDs, redirectBackBaseValue, redirectBackPathValue, nil
 }
 
 func randomBytes(n int) []byte {
@@ -487,9 +529,12 @@ func randomBytes(n int) []byte {
 }
 
 // HandleSamlAssertion processes/handles the assertion obtained by the POST to /saml/acs from IdP
-func HandleSamlAssertion(w http.ResponseWriter, r *http.Request, assertion *saml.Assertion, serviceProvider *model.RancherSamlServiceProvider) {
-	redirectBackBaseValue := serviceProvider.RedirectBackBase
-	redirectBackPathValue := serviceProvider.RedirectBackPath
+func HandleSamlAssertion(w http.ResponseWriter, r *http.Request, assertion *saml.Assertion, serviceProvider *model.RancherSamlServiceProvider,
+	redirectBackBaseValue string, redirectBackPathValue string) {
+
+	if redirectBackBaseValue == "" {
+		redirectBackBaseValue = server.GetRancherAPIHost()
+	}
 
 	if !isWhitelisted(redirectBackBaseValue, serviceProvider.RedirectWhitelist) {
 		log.Errorf("Cannot redirect to anything other than whitelisted domains and rancher api host")
@@ -546,6 +591,50 @@ func HandleSamlAssertion(w http.ResponseWriter, r *http.Request, assertion *saml
 	if XForwardedProtoValue == "https" {
 		secure = true
 	}
+
+	/* token is created at this point. If the redirectBackBase is not same as the current URL's domain, then we cannot set the token as cookie
+	yet. So we will first send a 200 POST to /v1-auth/saml/tokenhtml, which will contain token cookie and redirectBackBase in HTML body,
+	and JS which will submit form on load to redirect URL. The handler for v1-auth/saml/tokenhtml will then set the token as cookie
+	*/
+
+	log.Debugf("r.URL :%v, host :%v,redirectBackBaseValue: %v", r.URL, r.Host, redirectBackBaseValue)
+	query, err := url.Parse(redirectBackBaseValue)
+	if err != nil {
+		log.Errorf("HandleSamlAssertion: Error in parsing redirectBackBaseValue: %v", err)
+		redirectURL = addErrorToRedirect(redirectURL, "500")
+		http.Redirect(w, r, redirectURL, http.StatusFound)
+		return
+	}
+
+	if query.Host != r.URL.Host {
+		newRedirectURL := redirectBackBaseValue + postSamlTokenHTML
+		w.Header().Add("Content-type", "text/html")
+
+		tmpl := template.Must(template.New("saml-post-form").Parse(tpl))
+		data := struct {
+			URL              string
+			Token            string
+			FinalRedirectURL string
+			Secure           bool
+		}{
+			URL:              newRedirectURL,
+			Token:            jwt,
+			FinalRedirectURL: redirectURL,
+			Secure:           secure,
+		}
+
+		rv := bytes.Buffer{}
+		if err := tmpl.Execute(&rv, data); err != nil {
+			redirectURL = addErrorToRedirect(redirectURL, "500")
+			http.Redirect(w, r, redirectURL, http.StatusFound)
+			return
+		}
+
+		w.Write(rv.Bytes())
+		return
+	}
+
+	// else, if redirectBackBase is same as the current URL, continue and set this token as cookie
 	tokenCookie := &http.Cookie{
 		Name:   "token",
 		Value:  jwt,
@@ -554,27 +643,97 @@ func HandleSamlAssertion(w http.ResponseWriter, r *http.Request, assertion *saml
 		Path:   "/",
 	}
 	http.SetCookie(w, tokenCookie)
-
-	log.Debugf("redirecting the user with token to %v", redirectURL)
+	log.Debugf("JWT token: %v", jwt)
+	log.Debugf("redirecting the user with cookie %v to %v", tokenCookie, redirectURL)
 
 	http.Redirect(w, r, redirectURL, http.StatusFound)
 	return
 }
 
+func PostSamlTokenHTML(w http.ResponseWriter, r *http.Request) {
+	var token, finalRedirectURL string
+	var secure bool
+	var err error
+
+	if err = r.ParseForm(); err != nil {
+		log.Errorf("PostSamlTokenHTML: Error in parsing forn: %v", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	tokenArr, ok := r.Form["token"]
+	if ok || len(tokenArr) == 0 {
+		log.Errorf("PostSamlTokenHTML: No token provided in POST request: %v", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	token = tokenArr[0]
+	log.Debugf("PostSamlTokenHTML: token in the post form: %v", token)
+
+	finalRedirectURLArr, ok := r.Form["finalRedirectURL"]
+	if !ok || len(finalRedirectURLArr) == 0 {
+		log.Errorf("PostSamlTokenHTML: No finalRedirectURL provided in POST request: %v", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	finalRedirectURL = finalRedirectURLArr[0]
+	log.Debugf("PostSamlTokenHTML: finalRedirectURL in the post form: %v", finalRedirectURL)
+
+	secureArr, ok := r.Form["secure"]
+	if !ok || len(secureArr) == 0 {
+		log.Errorf("PostSamlTokenHTML: No secure parameter provided in POST request: %v", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	secureStr := secureArr[0]
+	secure, err = strconv.ParseBool(secureStr)
+	if err != nil {
+		log.Errorf("PostSamlTokenHTML: Error in parsing secure flag for token: %v", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	log.Debugf("PostSamlTokenHTML: secure attribute in the post form: %v, and original: %v", secure, secureStr)
+
+	tokenCookie := &http.Cookie{
+		Name:   "token",
+		Value:  token,
+		Secure: secure,
+		MaxAge: 0,
+		Path:   "/",
+	}
+	http.SetCookie(w, tokenCookie)
+	log.Debugf("redirecting the user with cookie %v to %v", tokenCookie, finalRedirectURL)
+
+	http.Redirect(w, r, finalRedirectURL, http.StatusFound)
+}
+
 func isWhitelisted(redirectBackBaseValue string, redirectWhitelist string) bool {
+	var redirectBackBaseDomainNonPort string
 	if redirectBackBaseValue == server.GetRancherAPIHost() {
 		return true
+	}
+	redirectURL, err := url.Parse(redirectBackBaseValue)
+	if err != nil {
+		log.Errorf("Error in parsing redirect URL")
+		return false
+	}
+	redirectBackBaseDomain := redirectURL.Host
+	if strings.Contains(redirectBackBaseDomain, ":") {
+		d := strings.SplitN(redirectBackBaseDomain, ":", 2)
+		redirectBackBaseDomainNonPort = d[0]
 	}
 
 	// comma separated list of whitelisted domains to redirect to
 	if redirectWhitelist != "" {
 		whitelistedDomains := strings.Split(redirectWhitelist, ",")
+		log.Debugf("Whitelisted domains provided: %v, redirectBackBase: %v, redirectBackBaseNonPort: %v", whitelistedDomains,
+			redirectBackBaseDomain, redirectBackBaseDomainNonPort)
 		for _, w := range whitelistedDomains {
-			if redirectBackBaseValue == w {
+			if w == redirectBackBaseDomain || w == redirectBackBaseDomainNonPort {
+				log.Debugf("Whitelisted domain matched: %v", w)
 				return true
 			}
 		}
 	}
-
 	return false
 }

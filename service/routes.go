@@ -53,6 +53,7 @@ func NewRouter() *mux.Router {
 	router.Methods("GET").Path("/v1-auth/saml/login").Handler(api.ApiHandler(schemas, http.HandlerFunc(HandleSamlLogin)))
 	router.Methods("POST").Path("/v1-auth/saml/acs").Handler(api.ApiHandler(schemas, http.HandlerFunc(ServeHTTP)))
 	router.Methods("GET").Path("/v1-auth/saml/metadata").Handler(api.ApiHandler(schemas, http.HandlerFunc(ServeHTTP)))
+	router.Methods("POST").Path("/v1-auth/saml/tokenhtml").Handler(api.ApiHandler(schemas, http.HandlerFunc(PostSamlTokenHTML)))
 
 	router.Methods("POST").Path("/v1-auth/testlogin").Handler(api.ApiHandler(schemas, http.HandlerFunc(TestLogin)))
 
