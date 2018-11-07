@@ -745,21 +745,11 @@ func GetConfig(accessToken string, listOnly bool) (model.AuthConfig, error) {
 	settings = append(settings, providerSetting)
 	settings = append(settings, providerNameSetting)
 	settings = append(settings, authServiceLogSetting)
-	if config.Provider == "shibbolethconfig" {
-		settings = append(settings, apiAuthShibbolethRedirectWhitelistSetting)
-	}
 
 	dbSettings, err := readCommonSettings(settings)
 	if err != nil {
 		log.Errorf("GetConfig: Error reading DB settings %v", err)
 		return config, err
-	}
-
-	if config.Provider == "shibbolethconfig" {
-		// is saml provider is initialized
-		if config.ShibbolethConfig.SamlServiceProvider != nil {
-			config.ShibbolethConfig.SamlServiceProvider.RedirectWhitelist = dbSettings[apiAuthShibbolethRedirectWhitelistSetting]
-		}
 	}
 
 	if dbSettings[authServiceLogSetting] != "" {
@@ -871,6 +861,14 @@ func Reload(fromUpdate bool) (bool, error) {
 		}
 		if authConfig.Provider == "shibbolethconfig" {
 			SamlServiceProvider = authConfig.ShibbolethConfig.SamlServiceProvider
+			settings := []string{}
+			settings = append(settings, apiAuthShibbolethRedirectWhitelistSetting)
+			dbSettings, err := readCommonSettings(settings)
+			if err != nil {
+				log.Errorf("Error reading apiAuthShibbolethRedirectWhitelistSetting from db during Reload %v", err)
+				return false, err
+			}
+			SamlServiceProvider.RedirectWhitelist = dbSettings[apiAuthShibbolethRedirectWhitelistSetting]
 		}
 		provider = newProvider
 		authConfigInMemory = authConfig
