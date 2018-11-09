@@ -386,6 +386,7 @@ func HandleSamlLogin(w http.ResponseWriter, r *http.Request) {
 
 	if !isWhitelisted(redirectBackBaseValue, s.RedirectWhitelist) {
 		log.Errorf("Cannot redirect to anything other than whitelisted domains and rancher api host")
+		ReturnHTTPError(w, r, http.StatusForbidden, "Cannot redirect to anything other than whitelisted domains and rancher api host")
 		return
 	}
 
@@ -536,12 +537,16 @@ func HandleSamlAssertion(w http.ResponseWriter, r *http.Request, assertion *saml
 		redirectBackBaseValue = server.GetRancherAPIHost()
 	}
 
+	redirectURL := server.GetSamlRedirectURL(redirectBackBaseValue, redirectBackPathValue)
+
 	if !isWhitelisted(redirectBackBaseValue, serviceProvider.RedirectWhitelist) {
 		log.Errorf("Cannot redirect to anything other than whitelisted domains and rancher api host")
+		redirectURL := server.GetSamlRedirectURL(server.GetRancherAPIHost(), redirectBackPathValue)
+		redirectURL = addErrorToRedirect(redirectURL, "403")
+		http.Redirect(w, r, redirectURL, http.StatusFound)
 		return
 	}
 
-	redirectURL := server.GetSamlRedirectURL(redirectBackBaseValue, redirectBackPathValue)
 	samlData := make(map[string][]string)
 
 	for _, attributeStatement := range assertion.AttributeStatements {
@@ -597,7 +602,6 @@ func HandleSamlAssertion(w http.ResponseWriter, r *http.Request, assertion *saml
 	and JS which will submit form on load to redirect URL. The handler for v1-auth/saml/tokenhtml will then set the token as cookie
 	*/
 
-	log.Debugf("r.URL :%v, host :%v,redirectBackBaseValue: %v", r.URL, r.Host, redirectBackBaseValue)
 	query, err := url.Parse(redirectBackBaseValue)
 	if err != nil {
 		log.Errorf("HandleSamlAssertion: Error in parsing redirectBackBaseValue: %v", err)
@@ -606,7 +610,9 @@ func HandleSamlAssertion(w http.ResponseWriter, r *http.Request, assertion *saml
 		return
 	}
 
-	if query.Host != r.URL.Host {
+	log.Debugf("HandleSamlAssertion: r.URL: %v, host: %v, redirectBackBaseValue: %v, redirectBackBaseValue.host: %v", r.URL, r.Host, redirectBackBaseValue,
+		query.Host)
+	if query.Host != r.Host {
 		newRedirectURL := redirectBackBaseValue + postSamlTokenHTML
 		w.Header().Add("Content-type", "text/html")
 
@@ -623,6 +629,7 @@ func HandleSamlAssertion(w http.ResponseWriter, r *http.Request, assertion *saml
 			Secure:           secure,
 		}
 
+		log.Debugf("HandleSamlAssertion: Adding data to template: %#v", data)
 		rv := bytes.Buffer{}
 		if err := tmpl.Execute(&rv, data); err != nil {
 			redirectURL = addErrorToRedirect(redirectURL, "500")
@@ -662,7 +669,7 @@ func PostSamlTokenHTML(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tokenArr, ok := r.Form["token"]
-	if ok || len(tokenArr) == 0 {
+	if !ok || len(tokenArr) == 0 {
 		log.Errorf("PostSamlTokenHTML: No token provided in POST request: %v", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
