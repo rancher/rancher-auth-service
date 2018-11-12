@@ -386,7 +386,10 @@ func HandleSamlLogin(w http.ResponseWriter, r *http.Request) {
 
 	if !isWhitelisted(redirectBackBaseValue, s.RedirectWhitelist) {
 		log.Errorf("Cannot redirect to anything other than whitelisted domains and rancher api host")
-		ReturnHTTPError(w, r, http.StatusForbidden, "Cannot redirect to anything other than whitelisted domains and rancher api host")
+		redirectBackPathValue := r.URL.Query().Get(redirectBackPath)
+		redirectURL := server.GetSamlRedirectURL(server.GetRancherAPIHost(), redirectBackPathValue)
+		redirectURL = addErrorToRedirect(redirectURL, "422")
+		http.Redirect(w, r, redirectURL, http.StatusFound)
 		return
 	}
 
@@ -542,7 +545,7 @@ func HandleSamlAssertion(w http.ResponseWriter, r *http.Request, assertion *saml
 	if !isWhitelisted(redirectBackBaseValue, serviceProvider.RedirectWhitelist) {
 		log.Errorf("Cannot redirect to anything other than whitelisted domains and rancher api host")
 		redirectURL := server.GetSamlRedirectURL(server.GetRancherAPIHost(), redirectBackPathValue)
-		redirectURL = addErrorToRedirect(redirectURL, "403")
+		redirectURL = addErrorToRedirect(redirectURL, "422")
 		http.Redirect(w, r, redirectURL, http.StatusFound)
 		return
 	}
