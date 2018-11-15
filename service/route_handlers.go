@@ -459,12 +459,7 @@ func ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if r.URL.Path == serviceProvider.AcsURL.Path {
 		r.ParseForm()
-		reqIDs, redirectBackBaseValue, redirectBackPathValue, err := getRequestIDAndRedirectParams(r, server.SamlServiceProvider)
-		if err != nil {
-			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
-			return
-		}
-		assertion, err := serviceProvider.ParseResponse(r, reqIDs)
+		assertion, err := serviceProvider.ParseResponse(r, getPossibleRequestIDs(r, server.SamlServiceProvider))
 		if err != nil {
 			if parseErr, ok := err.(*saml.InvalidResponseError); ok {
 				log.Errorf("RESPONSE: ===\n%s\n===\nNOW: %s\nERROR: %s",
@@ -474,19 +469,16 @@ func ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		HandleSamlAssertion(w, r, assertion, server.SamlServiceProvider, redirectBackBaseValue, redirectBackPathValue)
+		HandleSamlAssertion(w, r, assertion, server.SamlServiceProvider)
 		return
 	}
 
 	http.NotFoundHandler().ServeHTTP(w, r)
 }
 
-func getRequestIDAndRedirectParams(r *http.Request, s *model.RancherSamlServiceProvider) (reqIDs []string, redirectBackBaseValue string,
-	redirectBackPathValue string, err error) {
-	for name, value := range s.ClientState.GetStates(r) {
-		if strings.HasPrefix(name, "Rancher_") {
-			continue
-		}
+func getPossibleRequestIDs(r *http.Request, s *model.RancherSamlServiceProvider) []string {
+	rv := []string{}
+	for _, value := range s.ClientState.GetStates(r) {
 		jwtParser := jwt.Parser{
 			ValidMethods: []string{jwt.SigningMethodHS256.Name},
 		}
@@ -499,29 +491,10 @@ func getRequestIDAndRedirectParams(r *http.Request, s *model.RancherSamlServiceP
 			continue
 		}
 		claims := token.Claims.(jwt.MapClaims)
-		reqIDs = append(reqIDs, claims["id"].(string))
-		/*
-			HandleSamlLogin sets relayState per request, which contains the URI of the request. This URI has the redirectBackBase and
-			RedirectBackPath values. So we can get the redirectBackBase and redirectBackPath for the current login request from URI of
-			relayState
-		*/
-		redirectURI := claims["uri"].(string)
-		log.Debugf("redirectURI from claims: %v", redirectURI)
-		query, err := url.Parse(redirectURI)
-		if err != nil {
-			log.Errorf("Error in getting query params")
-			return []string{}, "", "", fmt.Errorf("Error in getting query params: %v", err)
-		}
-		parsedQuery, err := url.ParseQuery(query.RawQuery)
-		if err != nil {
-			log.Errorf("Error in parsing query params")
-			return []string{}, "", "", fmt.Errorf("Error in parsing query params: %v", err)
-		}
-		redirectBackBaseValue = parsedQuery.Get(redirectBackBase)
-		redirectBackPathValue = parsedQuery.Get(redirectBackPath)
-		log.Debugf("redirectBackBaseValue, redirectBackPathValue from claims: %v, %v", redirectBackBaseValue, redirectBackPathValue)
+		rv = append(rv, claims["id"].(string))
 	}
-	return reqIDs, redirectBackBaseValue, redirectBackPathValue, nil
+
+	return rv
 }
 
 func randomBytes(n int) []byte {
@@ -532,9 +505,82 @@ func randomBytes(n int) []byte {
 	return rv
 }
 
+func GetRedirectParams(w http.ResponseWriter, r *http.Request, serviceProvider *model.RancherSamlServiceProvider) (redirectBackBaseValue string,
+	redirectBackPathValue string) {
+	redirectBackBaseValue = server.GetRancherAPIHost()
+	redirectBackPathValue = "/login/shibboleth-auth"
+
+	if serviceProvider.ServiceProvider.Key == nil {
+		log.Errorf("GetRedirectParams: No key found in service provider")
+		redirectURL := server.GetSamlRedirectURL(redirectBackBaseValue, redirectBackPathValue)
+		redirectURL = addErrorToRedirect(redirectURL, "403")
+		http.Redirect(w, r, redirectURL, http.StatusFound)
+		return
+	}
+	secretBlock := x509.MarshalPKCS1PrivateKey(serviceProvider.ServiceProvider.Key)
+	if relayState := r.Form.Get("RelayState"); relayState != "" {
+		stateValue := serviceProvider.ClientState.GetState(r, relayState)
+		if stateValue == "" {
+			log.Errorf("cannot find corresponding state: %s", relayState)
+			redirectURL := server.GetSamlRedirectURL(redirectBackBaseValue, redirectBackPathValue)
+			redirectURL = addErrorToRedirect(redirectURL, "403")
+			http.Redirect(w, r, redirectURL, http.StatusFound)
+			return
+		}
+
+		jwtParser := jwt.Parser{
+			ValidMethods: []string{jwt.SigningMethodHS256.Name},
+		}
+		state, err := jwtParser.Parse(stateValue, func(t *jwt.Token) (interface{}, error) {
+			return secretBlock, nil
+		})
+		if err != nil || !state.Valid {
+			log.Errorf("Cannot decode state JWT: %s (%s)", err, stateValue)
+			redirectURL := server.GetSamlRedirectURL(redirectBackBaseValue, redirectBackPathValue)
+			redirectURL = addErrorToRedirect(redirectURL, "403")
+			http.Redirect(w, r, redirectURL, http.StatusFound)
+			return
+		}
+		claims := state.Claims.(jwt.MapClaims)
+		if claims == nil {
+			redirectURL := server.GetSamlRedirectURL(redirectBackBaseValue, redirectBackPathValue)
+			redirectURL = addErrorToRedirect(redirectURL, "403")
+			http.Redirect(w, r, redirectURL, http.StatusFound)
+			return
+		}
+		redirectURI := claims["uri"].(string)
+		log.Debugf("RelayState used to get redirect params: %v", relayState)
+		log.Debugf("redirectURI from claims: %v", redirectURI)
+		query, err := url.Parse(redirectURI)
+		if err != nil {
+			log.Errorf("Error in getting query params")
+			redirectURL := server.GetSamlRedirectURL(redirectBackBaseValue, redirectBackPathValue)
+			redirectURL = addErrorToRedirect(redirectURL, "403")
+			http.Redirect(w, r, redirectURL, http.StatusFound)
+			return
+		}
+		parsedQuery, err := url.ParseQuery(query.RawQuery)
+		if err != nil {
+			log.Errorf("Error in parsing query params")
+			redirectURL := server.GetSamlRedirectURL(redirectBackBaseValue, redirectBackPathValue)
+			redirectURL = addErrorToRedirect(redirectURL, "403")
+			http.Redirect(w, r, redirectURL, http.StatusFound)
+			return
+		}
+		redirectBackBaseValue = parsedQuery.Get(redirectBackBase)
+		redirectBackPathValue = parsedQuery.Get(redirectBackPath)
+		log.Debugf("redirectBackBaseValue, redirectBackPathValue from claims: %v, %v", redirectBackBaseValue, redirectBackPathValue)
+		// delete the cookie
+		log.Debugf("Deleting relayState: %v", relayState)
+		serviceProvider.ClientState.DeleteState(w, r, relayState)
+	}
+	return redirectBackBaseValue, redirectBackPathValue
+}
+
 // HandleSamlAssertion processes/handles the assertion obtained by the POST to /saml/acs from IdP
-func HandleSamlAssertion(w http.ResponseWriter, r *http.Request, assertion *saml.Assertion, serviceProvider *model.RancherSamlServiceProvider,
-	redirectBackBaseValue string, redirectBackPathValue string) {
+func HandleSamlAssertion(w http.ResponseWriter, r *http.Request, assertion *saml.Assertion, serviceProvider *model.RancherSamlServiceProvider) {
+	redirectBackBaseValue, redirectBackPathValue := GetRedirectParams(w, r, serviceProvider)
+	log.Debugf("redirectBackBaseValue, redirectBackPathValue from GetRedirectParams: %v, %v", redirectBackBaseValue, redirectBackPathValue)
 
 	if redirectBackBaseValue == "" {
 		redirectBackBaseValue = server.GetRancherAPIHost()
